@@ -1,0 +1,14 @@
+# Ingeniería de Datos e Ingesta
+pandas==2.2.2
+requests==2.31.0
+
+# Econometría y Cálculo Numérico
+numpy==1.26.4
+scipy==1.13.0
+
+# Base de Datos (Opcional si usás PostgreSQL en lugar de SQLite)
+psycopg2-binary==2.9.9
+
+# Visualización / Dashboard (Para la etapa online)
+streamlit==1.35.0
+plotly==5.22.0

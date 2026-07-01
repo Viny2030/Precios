@@ -1,0 +1,29 @@
+# Entornos virtuales locales
+venv/
+.venv/
+env/
+
+# Archivos temporales de PyCharm / IDEs
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# DATOS LOCALES (CRUCIAL: Nunca subir los dumps de datos masivos)
+*.zip
+*.csv
+*.json
+*.sqlite
+data/
+outputs/
+
+# Configuraciones ocultas y credenciales
+.env
+

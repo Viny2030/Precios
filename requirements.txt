@@ -2,13 +2,20 @@
 pandas==2.2.2
 requests==2.31.0
 
+# Base de Datos
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9   # opcional — solo si usás PostgreSQL en lugar de SQLite
+
 # Econometría y Cálculo Numérico
 numpy==1.26.4
+# scipy no se usa actualmente (la media geométrica se calcula con numpy),
+# se deja disponible por si se extiende el análisis estadístico.
 scipy==1.13.0
 
-# Base de Datos (Opcional si usás PostgreSQL en lugar de SQLite)
-psycopg2-binary==2.9.9
+# Lectura de Excel (.xls) — necesario para seed_ponderaciones.py, que lee
+# el archivo del INDEC en formato Excel 97-2003.
+xlrd==2.0.1
 
-# Visualización / Dashboard (Para la etapa online)
+# Visualización / Dashboard
 streamlit==1.35.0
 plotly==5.22.0

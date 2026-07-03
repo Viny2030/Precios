@@ -66,35 +66,12 @@ def descargar_ponderaciones_indec(columna_region: str = "GBA") -> pd.DataFrame:
     Descarga sh_ipc_aperturas.xls, extrae la sección "según principales
     aperturas" de la hoja Ponderaciones, y devuelve un DataFrame con
     columnas: coicop_subclase, descripcion_rubro, ponderacion_caba, division.
-
-    Si la descarga automática falla (algunos antivirus/firewalls de Windows
-    interceptan y cortan conexiones HTTPS de scripts, aunque el navegador
-    funcione perfecto contra la misma URL), cae a modo manual: buscá
-    data/manual/sh_ipc_aperturas.xls — si existe, se usa ese archivo en vez
-    de descargarlo.
     """
-    from pathlib import Path
-    ruta_manual = Path(config.DATA_DIR) / "manual" / "sh_ipc_aperturas.xls"
+    logger.info(f"Descargando {URL_APERTURAS_INDEC} ...")
+    resp = requests.get(URL_APERTURAS_INDEC, headers={"User-Agent": config.USER_AGENT}, timeout=30)
+    resp.raise_for_status()
 
-    contenido = None
-    try:
-        logger.info(f"Descargando {URL_APERTURAS_INDEC} ...")
-        resp = requests.get(URL_APERTURAS_INDEC, headers={"User-Agent": config.USER_AGENT}, timeout=30)
-        resp.raise_for_status()
-        contenido = resp.content
-    except Exception as e:
-        logger.warning(f"Descarga automática falló ({e}) — buscando modo manual en {ruta_manual}")
-        if ruta_manual.exists():
-            logger.info(f"Usando archivo manual: {ruta_manual}")
-            contenido = ruta_manual.read_bytes()
-        else:
-            raise RuntimeError(
-                f"No se pudo descargar automáticamente y no existe {ruta_manual}. "
-                f"Descargá el archivo a mano desde {URL_APERTURAS_INDEC} y guardalo "
-                f"exactamente en esa ruta (creá la carpeta data/manual/ si no existe)."
-            ) from e
-
-    df_raw = pd.read_excel(io.BytesIO(contenido), sheet_name="Ponderaciones", header=None)
+    df_raw = pd.read_excel(io.BytesIO(resp.content), sheet_name="Ponderaciones", header=None)
 
     # Localizar la fila de encabezado de la tabla "según principales aperturas"
     fila_header = df_raw[df_raw[0].astype(str).str.contains("Descripcion", na=False)].index

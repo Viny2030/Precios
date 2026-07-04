@@ -1,141 +1,354 @@
 """
-app.py — Dashboard online (Streamlit)
+api.py — API REST (FastAPI) del Índice de Precios de Alimentos y Bebidas CABA.
 
-Correr con: streamlit run app.py
+Expone los índices calculados por el pipeline (calcular_indice_mensual.py) y
+el comparativo contra la serie oficial del INDEC.
+
+Corrida en desarrollo:
+    uvicorn api:app --reload
+
+Documentación interactiva (Swagger UI):
+    http://127.0.0.1:8000/docs
+
+Convenciones de la respuesta:
+- Todas las fechas y períodos siguen ISO ("YYYY-MM" para períodos mensuales,
+  "YYYY-MM-DD" para fechas puntuales).
+- El campo `origen_datos` en cada índice aclara si el período se calculó con
+  precios reales o precios SINTÉTICOS_DEV (útil hasta que julio 2026 cierre).
+- El comparativo con INDEC devuelve `indec_disponible: false` cuando el mes
+  aún no fue publicado (INDEC publica el día 14 del mes siguiente).
 """
-import pandas as pd
-import plotly.graph_objects as go
-import streamlit as st
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 
-import comparativo
 import config
-from models import IndiceCalculado, RegistroPrecio, SerieComparativaINDEC, SessionLocal
-
-st.set_page_config(page_title="Índice de Precios CABA — Nueva Canasta", layout="wide")
-
-st.title("📊 Índice de Alimentos y Bebidas — CABA")
-st.caption(
-    "Nueva Canasta (ENGHo 2017-2018 / COICOP) · Fórmula de Jevons + Laspeyres · "
-    "Datos oficiales bajo Ley 27.275 — cero datos sintéticos."
+from models import (
+    IndiceCalculado,
+    PonderacionCoicop,
+    RegistroPrecio,
+    SerieComparativaINDEC,
+    SessionLocal,
 )
 
-db = SessionLocal()
+MARCA_SINTETICO = "SINTETICO_DEV"
+SERIE_INDEC_ALIMENTOS = "148.3_INDEC_GBA_01_0_24"
 
-
-# ── Estado general de la base ────────────────────────────────────────────────
-
-total_registros = db.query(func.count(RegistroPrecio.id)).scalar() or 0
-total_indices = db.query(func.count(IndiceCalculado.id)).scalar() or 0
-
-if total_registros == 0:
-    st.warning(
-        "⚠️ Todavía no hay registros de precios cargados en la base.\n\n"
-        "Esto es esperable si es la primera vez que corrés el proyecto: correr "
-        "`python main.py` descarga (o intenta descargar) el ZIP del día del SEPA. "
-        "Si el portal bloqueó la descarga automática (ver `ingesta.py` para el porqué), "
-        "descargá el ZIP a mano desde https://datos.gob.ar/dataset/produccion-precios-claros---base-sepa "
-        "y guardalo en `data/manual/<dia>.zip` antes de volver a correr `main.py`."
-    )
-    db.close()
-    st.stop()
-
-
-col1, col2, col3 = st.columns(3)
-col1.metric("Registros de precios (CABA)", f"{total_registros:,}")
-col2.metric("Períodos con índice calculado", total_indices)
-
-ultimo_indice = (
-    db.query(IndiceCalculado)
-    .filter(IndiceCalculado.nivel == "general")
-    .order_by(IndiceCalculado.periodo.desc())
-    .first()
-)
-if ultimo_indice:
-    col3.metric(
-        f"Inflación Alimentos — {ultimo_indice.periodo}",
-        f"{float(ultimo_indice.variacion_pct or 0):+.1f}%",
-    )
-else:
-    col3.metric("Inflación Alimentos", "sin calcular todavía")
-
-st.divider()
-
-
-# ── Gráfico de tendencia: índice propio vs. oficial ──────────────────────────
-
-st.subheader("Tu índice vs. IPC oficial")
-
-indices_generales = pd.read_sql(
-    db.query(IndiceCalculado)
-    .filter(IndiceCalculado.nivel == "general")
-    .order_by(IndiceCalculado.periodo)
-    .statement,
-    db.bind,
+app = FastAPI(
+    title="Índice de Alimentos y Bebidas — CABA",
+    description=(
+        "Índice propio calculado a partir de precios oficiales publicados bajo "
+        "Ley 27.275 (SEPA / Precios Claros), con comparativo contra el IPC "
+        "oficial del INDEC (Alimentos y Bebidas, GBA). "
+        f"Base = {config.PERIODO_BASE} = 100."
+    ),
+    version="0.1.0",
 )
 
-serie_oficial = pd.read_sql(db.query(SerieComparativaINDEC).statement, db.bind)
-
-fig = go.Figure()
-if not indices_generales.empty:
-    fig.add_trace(go.Scatter(
-        x=indices_generales["periodo"], y=indices_generales["indice_valor"].astype(float),
-        name="Índice propio (Nueva Canasta)", mode="lines+markers",
-    ))
-if not serie_oficial.empty:
-    for serie_id, nombre in [
-        (config.SERIE_IPC_GBA_ALIMENTOS, "IPC-GBA Alimentos (INDEC)"),
-        (config.SERIE_IPC_CABA_ALIMENTOS, "IPC Alimentos CABA (GCBA)"),
-    ]:
-        sub = serie_oficial[serie_oficial["serie_id"] == serie_id]
-        if not sub.empty:
-            fig.add_trace(go.Scatter(
-                x=sub["fecha"], y=sub["valor"].astype(float),
-                name=nombre, mode="lines", line=dict(dash="dot"),
-            ))
-
-if fig.data:
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Sin datos suficientes todavía para graficar la tendencia.")
-
-if st.button("🔄 Actualizar serie comparativa (INDEC/GCBA)"):
-    with st.spinner("Descargando series oficiales..."):
-        df_comp = comparativo.obtener_historico_comparativo()
-        if not df_comp.empty:
-            comparativo.guardar_en_db(db, df_comp)
-            st.success("Serie actualizada — recargá la página para ver el gráfico.")
-        else:
-            st.error("No se pudo descargar la serie oficial en este momento.")
-
-st.divider()
-
-
-# ── Apertura por rubros COICOP ───────────────────────────────────────────────
-
-st.subheader("Apertura por rubros COICOP")
-
-indices_subclase = pd.read_sql(
-    db.query(IndiceCalculado)
-    .filter(IndiceCalculado.nivel == "coicop_subclase")
-    .order_by(IndiceCalculado.periodo.desc())
-    .statement,
-    db.bind,
+# CORS abierto para desarrollo; ajustar en producción a dominios específicos.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
 )
 
-if not indices_subclase.empty:
-    ultimo_periodo = indices_subclase["periodo"].max()
-    tabla = indices_subclase[indices_subclase["periodo"] == ultimo_periodo][
-        ["coicop_subclase", "indice_valor", "variacion_pct", "cantidad_variedades"]
-    ].sort_values("variacion_pct", ascending=False)
-    st.dataframe(tabla, use_container_width=True, hide_index=True)
-else:
-    st.info("Todavía no hay índices por subclase COICOP calculados.")
 
-db.close()
+# ── Modelos de respuesta (Pydantic) ─────────────────────────────────────────
 
-st.caption(
-    "Fuentes: SEPA/Precios Claros (Ministerio de Producción), ENGHo 2017-2018 (INDEC), "
-    "IPC-GBA (INDEC), IPC CABA (GCBA). Ver README.md para el detalle metodológico y las "
-    "limitaciones de acceso automatizado conocidas."
-)
+class InfoSistema(BaseModel):
+    servicio: str
+    version: str
+    periodo_base: str
+    total_registros_precios: int
+    periodos_calculados: int
+    ultimo_periodo: Optional[str]
+    aviso: str
+
+
+class IndiceGeneral(BaseModel):
+    periodo: str = Field(..., example="2026-05")
+    indice_valor: float = Field(..., example=97.50)
+    variacion_pct_mensual: Optional[float] = Field(None, example=3.59,
+        description="Variación % contra el mes anterior. Null si es el primer período.")
+    cantidad_variedades: int = Field(..., example=30)
+    origen_datos: str = Field(..., example="sintetico_dev",
+        description="'real' o 'sintetico_dev' — este último solo hasta que existan datos reales.")
+
+
+class IndiceRubro(BaseModel):
+    coicop_subclase: str = Field(..., example="01.1.1")
+    descripcion: Optional[str] = Field(None, example="Pan y cereales")
+    indice_valor: float
+    variacion_pct_mensual: Optional[float]
+    cantidad_variedades: int
+    ponderacion_caba: Optional[float] = Field(None,
+        description="Peso relativo en la canasta ENGHo 2017-2018.")
+
+
+class Rubro(BaseModel):
+    coicop_subclase: str
+    descripcion: Optional[str]
+    division: Optional[str]
+    ponderacion_caba: Optional[float]
+
+
+class Comparativo(BaseModel):
+    periodo: str
+    indice_propio: float
+    variacion_pct_propia: Optional[float]
+    indec_disponible: bool
+    indec_indice: Optional[float] = Field(None,
+        description="Nivel del INDEC en el período (en su base histórica).")
+    indec_variacion_pct: Optional[float]
+    diferencia_puntos_pct: Optional[float] = Field(None,
+        description="Variación propia menos variación INDEC, en puntos porcentuales.")
+    nota: Optional[str] = None
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+def _to_float(x) -> Optional[float]:
+    if x is None:
+        return None
+    return float(x) if isinstance(x, Decimal) else float(x)
+
+
+def _periodo_a_rango_fechas(periodo: str) -> tuple[date, date]:
+    """'2026-05' -> (2026-05-01, 2026-06-01)."""
+    try:
+        anio, mes = map(int, periodo.split("-"))
+    except (ValueError, AttributeError):
+        raise HTTPException(400, f"Período mal formado: '{periodo}' (usar YYYY-MM)")
+    inicio = date(anio, mes, 1)
+    fin = date(anio + (mes == 12), (mes % 12) + 1, 1)
+    return inicio, fin
+
+
+def _origen_datos_periodo(db, periodo: str) -> str:
+    """Mira los RegistroPrecio del período: si la mayoría son SINTETICO_DEV,
+    marca el período como sintético."""
+    inicio, fin = _periodo_a_rango_fechas(periodo)
+    total = db.query(func.count(RegistroPrecio.id)).filter(
+        RegistroPrecio.fecha >= inicio, RegistroPrecio.fecha < fin
+    ).scalar() or 0
+    sinteticos = db.query(func.count(RegistroPrecio.id)).filter(
+        RegistroPrecio.fecha >= inicio, RegistroPrecio.fecha < fin,
+        RegistroPrecio.cadena == MARCA_SINTETICO,
+    ).scalar() or 0
+    if total == 0:
+        return "sin_datos"
+    return "sintetico_dev" if sinteticos > total / 2 else "real"
+
+
+def _descripciones_coicop(db) -> dict[str, tuple[str, str, Optional[float]]]:
+    """Devuelve {coicop_subclase: (descripcion, division, ponderacion)}."""
+    filas = db.query(PonderacionCoicop).all()
+    return {
+        f.coicop_subclase: (f.descripcion_rubro, f.division, _to_float(f.ponderacion_caba))
+        for f in filas
+    }
+
+
+# ── Endpoints ───────────────────────────────────────────────────────────────
+
+@app.get("/", response_model=InfoSistema, tags=["info"])
+def raiz():
+    """Health check + resumen del estado del sistema."""
+    db = SessionLocal()
+    try:
+        total = db.query(func.count(RegistroPrecio.id)).scalar() or 0
+        periodos = db.query(func.count(func.distinct(IndiceCalculado.periodo))).filter(
+            IndiceCalculado.nivel == "general"
+        ).scalar() or 0
+        ultimo = db.query(func.max(IndiceCalculado.periodo)).filter(
+            IndiceCalculado.nivel == "general"
+        ).scalar()
+        return InfoSistema(
+            servicio="Índice de Alimentos y Bebidas — CABA",
+            version="0.1.0",
+            periodo_base=config.PERIODO_BASE,
+            total_registros_precios=total,
+            periodos_calculados=periodos,
+            ultimo_periodo=ultimo,
+            aviso=(
+                "Servicio en desarrollo. Algunos períodos pueden estar calculados "
+                "con datos SINTÉTICOS_DEV. Ver campo `origen_datos` de cada índice."
+            ),
+        )
+    finally:
+        db.close()
+
+
+@app.get("/indices", response_model=list[IndiceGeneral], tags=["indices"])
+def listar_indices():
+    """Lista todos los períodos con índice general calculado, ordenados
+    cronológicamente."""
+    db = SessionLocal()
+    try:
+        filas = (
+            db.query(IndiceCalculado)
+            .filter(IndiceCalculado.nivel == "general")
+            .order_by(IndiceCalculado.periodo)
+            .all()
+        )
+        return [
+            IndiceGeneral(
+                periodo=f.periodo,
+                indice_valor=_to_float(f.indice_valor),
+                variacion_pct_mensual=_to_float(f.variacion_pct),
+                cantidad_variedades=f.cantidad_variedades or 0,
+                origen_datos=_origen_datos_periodo(db, f.periodo),
+            )
+            for f in filas
+        ]
+    finally:
+        db.close()
+
+
+@app.get("/indices/{periodo}", response_model=IndiceGeneral, tags=["indices"])
+def obtener_indice(periodo: str):
+    """Devuelve el índice general de un período (formato YYYY-MM)."""
+    db = SessionLocal()
+    try:
+        f = (
+            db.query(IndiceCalculado)
+            .filter(IndiceCalculado.nivel == "general", IndiceCalculado.periodo == periodo)
+            .first()
+        )
+        if not f:
+            raise HTTPException(404, f"No hay índice calculado para {periodo}")
+        return IndiceGeneral(
+            periodo=f.periodo,
+            indice_valor=_to_float(f.indice_valor),
+            variacion_pct_mensual=_to_float(f.variacion_pct),
+            cantidad_variedades=f.cantidad_variedades or 0,
+            origen_datos=_origen_datos_periodo(db, f.periodo),
+        )
+    finally:
+        db.close()
+
+
+@app.get("/indices/{periodo}/rubros", response_model=list[IndiceRubro], tags=["indices"])
+def apertura_por_rubros(periodo: str):
+    """Apertura del período por subclases COICOP (rubro por rubro)."""
+    db = SessionLocal()
+    try:
+        filas = (
+            db.query(IndiceCalculado)
+            .filter(IndiceCalculado.nivel == "coicop_subclase",
+                    IndiceCalculado.periodo == periodo)
+            .order_by(IndiceCalculado.coicop_subclase)
+            .all()
+        )
+        if not filas:
+            raise HTTPException(404, f"No hay apertura por rubros para {periodo}")
+
+        desc = _descripciones_coicop(db)
+        return [
+            IndiceRubro(
+                coicop_subclase=f.coicop_subclase,
+                descripcion=desc.get(f.coicop_subclase, (None, None, None))[0],
+                indice_valor=_to_float(f.indice_valor),
+                variacion_pct_mensual=_to_float(f.variacion_pct),
+                cantidad_variedades=f.cantidad_variedades or 0,
+                ponderacion_caba=desc.get(f.coicop_subclase, (None, None, None))[2],
+            )
+            for f in filas
+        ]
+    finally:
+        db.close()
+
+
+@app.get("/rubros", response_model=list[Rubro], tags=["catalogo"])
+def catalogo_rubros():
+    """Catálogo de subclases COICOP en la canasta ENGHo, con descripción y
+    ponderación."""
+    db = SessionLocal()
+    try:
+        filas = db.query(PonderacionCoicop).order_by(PonderacionCoicop.coicop_subclase).all()
+        return [
+            Rubro(
+                coicop_subclase=f.coicop_subclase,
+                descripcion=f.descripcion_rubro,
+                division=f.division,
+                ponderacion_caba=_to_float(f.ponderacion_caba),
+            )
+            for f in filas
+        ]
+    finally:
+        db.close()
+
+
+@app.get("/comparativo/{periodo}", response_model=Comparativo, tags=["comparativo"])
+def comparativo(periodo: str):
+    """Compara la variación mensual del índice propio contra la del INDEC
+    (Alimentos y Bebidas, GBA). Si el INDEC aún no publicó el período,
+    `indec_disponible` es false."""
+    db = SessionLocal()
+    try:
+        propio = (
+            db.query(IndiceCalculado)
+            .filter(IndiceCalculado.nivel == "general", IndiceCalculado.periodo == periodo)
+            .first()
+        )
+        if not propio:
+            raise HTTPException(404, f"No hay índice propio calculado para {periodo}")
+
+        variacion_propia = _to_float(propio.variacion_pct)
+
+        # INDEC: nivel del período pedido y del anterior, para calcular variación.
+        inicio_periodo, _ = _periodo_a_rango_fechas(periodo)
+        indec_actual = (
+            db.query(SerieComparativaINDEC)
+            .filter(SerieComparativaINDEC.serie_id == SERIE_INDEC_ALIMENTOS,
+                    SerieComparativaINDEC.fecha == inicio_periodo)
+            .first()
+        )
+        if not indec_actual:
+            return Comparativo(
+                periodo=periodo,
+                indice_propio=_to_float(propio.indice_valor),
+                variacion_pct_propia=variacion_propia,
+                indec_disponible=False,
+                nota=(
+                    "El INDEC aún no publicó este período, o la serie no está "
+                    "cargada localmente. INDEC publica el día 14 del mes siguiente."
+                ),
+            )
+
+        indec_anterior = (
+            db.query(SerieComparativaINDEC)
+            .filter(SerieComparativaINDEC.serie_id == SERIE_INDEC_ALIMENTOS,
+                    SerieComparativaINDEC.fecha < inicio_periodo)
+            .order_by(SerieComparativaINDEC.fecha.desc())
+            .first()
+        )
+        variacion_indec = None
+        if indec_anterior and float(indec_anterior.valor) > 0:
+            variacion_indec = (
+                (float(indec_actual.valor) / float(indec_anterior.valor)) - 1
+            ) * 100
+
+        diferencia = None
+        if variacion_propia is not None and variacion_indec is not None:
+            diferencia = variacion_propia - variacion_indec
+
+        return Comparativo(
+            periodo=periodo,
+            indice_propio=_to_float(propio.indice_valor),
+            variacion_pct_propia=variacion_propia,
+            indec_disponible=True,
+            indec_indice=_to_float(indec_actual.valor),
+            indec_variacion_pct=variacion_indec,
+            diferencia_puntos_pct=diferencia,
+        )
+    finally:
+        db.close()

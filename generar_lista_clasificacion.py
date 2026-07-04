@@ -82,7 +82,13 @@ def sugerir_coicop(nombre: str) -> str:
 
 
 def main() -> None:
-    dia = config.DIAS_SEPA[date.today().weekday() % 7]
+    # Permite forzar un día distinto al de hoy (útil si el recurso del día
+    # actual no está publicado, o para usar el caché de un día previo).
+    import sys
+    if len(sys.argv) > 1:
+        dia = sys.argv[1]
+    else:
+        dia = config.DIAS_SEPA[date.today().weekday() % 7]
     print(f"Leyendo dump de '{dia}' (usa el caché local si existe)...")
     df = procesar_dia_sepa(dia)
     if df.empty:

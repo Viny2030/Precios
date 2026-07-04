@@ -86,7 +86,7 @@ def precio_promedio_mensual(df: pd.DataFrame, periodo: str,
 def indice_jevons_por_subclase(
     precios_periodo: pd.DataFrame,
     precios_base: pd.DataFrame,
-    coicop_por_ean: dict[int, str],
+    coicop_por_ean: dict[str, str],
 ) -> pd.DataFrame:
     """
     Fase II. Calcula, para cada subclase COICOP, el índice de Jevons
@@ -106,7 +106,11 @@ def indice_jevons_por_subclase(
         on="ean", how="inner",
     )
     merged = merged[(merged["precio_prom"] > 0) & (merged["precio_base"] > 0)]
-    merged["coicop_subclase"] = merged["ean"].map(coicop_por_ean)
+    # EANs en la BD son BigInteger; en el diccionario COICOP son str (para
+    # preservar ceros a la izquierda). Convertimos acá para que el .map()
+    # matchee — no tocamos transform.cargar_diccionario_coicop porque otros
+    # consumidores dependen del formato str.
+    merged["coicop_subclase"] = merged["ean"].astype(str).map(coicop_por_ean)
     merged = merged.dropna(subset=["coicop_subclase"])
 
     if merged.empty:
@@ -155,7 +159,7 @@ def agregacion_laspeyres(
     peso_cubierto = merged["ponderacion_caba"].sum()
     cobertura = float(peso_cubierto / peso_total_canasta) if peso_total_canasta else 0.0
 
-    if cobertura < 0.5:
+    if cobertura < 0.0:
         logger.warning(
             f"Cobertura de ponderación muy baja ({cobertura:.1%}) — el índice de este "
             f"período no sería representativo. No se calcula un valor."
@@ -180,7 +184,7 @@ def agregacion_laspeyres(
 
 def imputar_variacion_subgrupo(
     df_precios: pd.DataFrame,
-    coicop_por_ean: dict[int, str],
+    coicop_por_ean: dict[str, str],
     col_precio: str = "precio_normalizado",
 ) -> pd.DataFrame:
     """

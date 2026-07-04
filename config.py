@@ -52,8 +52,8 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # --- PARÁMETROS ECONOMÉTRICOS ---
-# Período base para el cálculo del índice (ej. Enero 2026 = 100).
-PERIODO_BASE = "2026-01"
+# Período base para el cálculo del índice (Junio 2026 = 100: primer mes con datos).
+PERIODO_BASE = "2026-06"
 
 # Divisiones COICOP relevantes (01 = Alimentos, 02 = Bebidas alcohólicas y tabaco)
 DIVISIONES_COICOP = ["01", "02"]

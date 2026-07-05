@@ -35,6 +35,7 @@ from __future__ import annotations
 import io
 import logging
 import re
+import unicodedata
 import zipfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -68,6 +69,20 @@ CLAVE_SUCURSAL = ["id_comercio", "id_bandera", "id_sucursal"]
 
 # ─────────────────────────── descarga / caché ───────────────────────────────
 
+def _normalizar_nombre_dia(nombre: str) -> str:
+    """Normaliza nombres de día para comparar sin tildes ni mayúsculas.
+    BUG (detectado 2026-07-05): config.DIAS_SEPA trae 'Miercoles'/'Sabado'
+    sin tilde, pero el catálogo CKAN publica los recursos como 'Miércoles'
+    y 'Sábado' — la comparación exacta anterior (.lower()) fallaba siempre
+    para esos dos días, silenciosamente (devolvía 'no encontrado' cada
+    semana sin romper el pipeline). Esta normalización lo hace robusto a
+    tildes en cualquiera de los dos lados."""
+    if not nombre:
+        return ""
+    sin_tildes = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode("ascii")
+    return sin_tildes.strip().lower()
+
+
 def _descargar_zip_dia(dia: str) -> Optional[bytes]:
     """Descarga vía catálogo CKAN. Devuelve None si el WAF bloquea (403)."""
     headers = {"User-Agent": config.USER_AGENT, "Accept": "application/json"}
@@ -84,7 +99,10 @@ def _descargar_zip_dia(dia: str) -> Optional[bytes]:
         logger.error(f"No se pudo consultar el catálogo CKAN: {e}")
         return None
 
-    url_dia = next((rec["url"] for rec in recursos if rec.get("name", "").lower() == dia.lower()), None)
+    url_dia = next(
+        (rec["url"] for rec in recursos if _normalizar_nombre_dia(rec.get("name", "")) == _normalizar_nombre_dia(dia)),
+        None,
+    )
     if not url_dia:
         logger.error(f"No se encontró el recurso '{dia}' en el catálogo CKAN")
         return None

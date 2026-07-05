@@ -1,0 +1,70 @@
+name: Ingesta diaria SEPA
+
+# Corre todos los días para acumular precios reales del SEPA (Precios Claros)
+# a partir del 1/7/2026, y deja el resultado commiteado en el propio repo.
+#
+# - Automático: todos los días a las 04:00 hora Argentina (07:00 UTC),
+#   corre main.py con el día de la semana que corresponda a hoy.
+# - Manual (workflow_dispatch): permite forzar un backfill de varios días
+#   de una sola vez con barrer_semana.py --dias <...> — útil para el
+#   setup inicial (recuperar los días de julio que ya están en el
+#   catálogo CKAN) o para recuperar cobertura si se amplía el diccionario
+#   COICOP.
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      dias:
+        description: >
+          Días a barrer en esta corrida manual, separados por espacio
+          (ej: "Miercoles Jueves Viernes Sabado"). Dejar vacío para que
+          corra main.py con el día de hoy (comportamiento normal diario).
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ingesta-sepa
+  cancel-in-progress: false
+
+jobs:
+  ingesta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Correr ingesta
+        run: |
+          if [ -n "${{ github.event.inputs.dias }}" ]; then
+            echo "Backfill manual de: ${{ github.event.inputs.dias }}"
+            python barrer_semana.py --dias ${{ github.event.inputs.dias }}
+          else
+            echo "Corrida diaria normal (día de hoy)"
+            python main.py
+          fi
+
+      - name: Commitear base de datos actualizada
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/indice_caba.sqlite data/diccionario_coicop.csv data/clasificacion_pendiente.csv
+          if git diff --cached --quiet; then
+            echo "Sin cambios para commitear (0 precios nuevos, o WAF bloqueó la descarga hoy)."
+          else
+            git commit -m "Ingesta SEPA $(date -u +%Y-%m-%d)"
+            git push
+          fi

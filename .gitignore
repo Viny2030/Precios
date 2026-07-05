@@ -16,14 +16,27 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
-# DATOS LOCALES (CRUCIAL: Nunca subir los dumps de datos masivos)
+# Logs locales (pipeline_diario.bat). En GitHub Actions los logs quedan
+# en la pestaña "Actions", no hace falta versionarlos.
+logs/
+
+# DATOS LOCALES: por defecto no versionamos nada de data/ (dumps crudos,
+# cachés, etc.) — EXCEPTO las excepciones explícitas de más abajo.
 *.zip
-*.csv
 *.json
-*.sqlite
-data/
+data/*
+
+# Excepciones: SÍ versionamos la base y los insumos de clasificación,
+# porque son el estado que necesita la ingesta diaria en GitHub Actions
+# para arrancar y para seguir clasificando productos nuevos.
+!data/indice_caba.sqlite
+!data/diccionario_coicop.csv
+!data/clasificacion_pendiente.csv
+
+# Los dumps crudos del SEPA (cientos de MB por día) NUNCA se versionan.
+data/manual/
+
 outputs/
 
 # Configuraciones ocultas y credenciales
 .env
-

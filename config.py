@@ -38,6 +38,27 @@ SERIES_API_BASE = "https://apis.datos.gob.ar/series/api/series/"
 SERIE_IPC_GBA_ALIMENTOS = "101.1_I2AB_2016_M_26"       # INDEC, IPC-GBA Alimentos y Bebidas
 SERIE_IPC_CABA_ALIMENTOS = "193.2_ALIMENTOS_CAS_2021_0_32_80"  # GCBA, específica de CABA
 
+# Serie NACIONAL (no regional) — Nivel General, base dic-2016, mensual.
+# Agregada 2026-07-05 a pedido: el usuario quería comparar contra "la del
+# INDEC" tal cual sale en los medios (el titular de inflación mensual que
+# todo el mundo cita), no contra el desglose regional GBA de Alimentos y
+# Bebidas que se usaba antes. Verificada contra datos reales publicados
+# (abril 2026 ≈ 2.58%, mayo 2026 ≈ 2.15% con esta serie — coincide con lo
+# informado por el INDEC/prensa).
+# OJO: esta serie es Nivel General (TODOS los rubros: transporte, alquiler,
+# etc.), no solo alimentos — es un benchmark distinto, no "alimentos pero
+# a nivel nacional". Se usa SOLO para el comparativo general en api.py, NO
+# para calibrar los precios sintéticos de abril/mayo/junio (eso sigue
+# calibrado contra SERIE_IPC_GBA_ALIMENTOS, que sí es específica de
+# alimentos — mezclar nivel general ahí sesgaría la calibración).
+SERIE_IPC_NACIONAL_NIVEL_GENERAL = "148.3_INIVELNAL_DICI_M_26"  # INDEC, IPC Nacional Nivel General
+
+# El desglose POR RUBRO (aperturas COICOP) del INDEC solo existe por región
+# (GBA, Pampeana, NOA, NEA, Cuyo, Patagonia) — no hay una fila "Nacional" en
+# sh_ipc_aperturas.xls. Por eso el comparativo por rubro sigue usando GBA
+# (ver comparativo.obtener_indices_indec_por_rubro); el comparativo GENERAL
+# sí usa la serie nacional de arriba.
+
 # --- CONFIGURACIÓN DE ALMACENAMIENTO ---
 # Por defecto usamos SQLite para desarrollo local ágil. En producción, seteá
 # DATABASE_URL como variable de entorno (postgresql://...).

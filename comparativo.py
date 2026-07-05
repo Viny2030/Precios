@@ -39,11 +39,11 @@ import config
 
 logger = logging.getLogger("comparativo")
 
-URL_API_INDEC_IPC = (
-    f"{config.SERIES_API_BASE}?ids={config.SERIE_IPC_GBA_ALIMENTOS}&format=csv&limit=1000"
-)
-
 URL_APERTURAS_INDEC = "https://www.indec.gob.ar/ftp/cuadros/economia/sh_ipc_aperturas.xls"
+
+
+def _url_serie(serie_id: str) -> str:
+    return f"{config.SERIES_API_BASE}?ids={serie_id}&format=csv&limit=1000"
 
 # Mismo mapeo que usa precios_seed_ponderaciones.py para las ponderaciones
 # (nombre de fila tal como aparece en el archivo del INDEC -> código COICOP
@@ -75,15 +75,18 @@ def _normalizar_nombre_rubro(nombre: str) -> str:
 _MAPEO_NORMALIZADO = {_normalizar_nombre_rubro(k): v for k, v in MAPEO_FILA_A_CODIGO.items()}
 
 
-def obtener_historico_indec() -> pd.DataFrame:
+def obtener_historico_indec(serie_id: str | None = None) -> pd.DataFrame:
     """Devuelve DataFrame con columnas ['fecha' (Period 'M'),
-    'indice_oficial_alimentos'] o vacío si la descarga falla. Nivel general
-    (Alimentos y Bebidas GBA), NO por rubro — para eso ver
-    obtener_indices_indec_por_rubro()."""
-    logger.info("Conectando con la API de Series de Tiempo (INDEC)...")
+    'indice_oficial_alimentos'] o vacío si la descarga falla, para la serie
+    pedida (por defecto config.SERIE_IPC_GBA_ALIMENTOS, la que se usa para
+    calibrar los precios sintéticos). Para el comparativo general contra el
+    Nivel General Nacional, llamar con serie_id=config.SERIE_IPC_NACIONAL_NIVEL_GENERAL.
+    NO es por rubro — para eso ver obtener_indices_indec_por_rubro()."""
+    serie_id = serie_id or config.SERIE_IPC_GBA_ALIMENTOS
+    logger.info(f"Conectando con la API de Series de Tiempo (INDEC) — serie {serie_id}...")
     try:
         r = requests.get(
-            URL_API_INDEC_IPC,
+            _url_serie(serie_id),
             headers={"User-Agent": config.USER_AGENT, "Accept": "text/csv"},
             timeout=60,
         )

@@ -24,8 +24,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 
@@ -39,10 +42,18 @@ from models import (
 )
 
 MARCA_SINTETICO = "SINTETICO_DEV"
-# ID de serie vigente (ver nota en comparativo.py, 2026-07-05) — antes
-# apuntaba a "148.3_INDEC_GBA_01_0_24", que ya no existe en el catálogo
-# (daba 400). Ahora se toma de config para no duplicar el ID en dos lugares.
-SERIE_INDEC_ALIMENTOS = config.SERIE_IPC_GBA_ALIMENTOS
+# Comparativo GENERAL (/comparativo/{periodo}): contra el Nivel General
+# Nacional del INDEC — el número de inflación mensual que sale en todos
+# lados, no el desglose regional de Alimentos y Bebidas (cambiado
+# 2026-07-05 a pedido: comparar contra "la del INDEC" que todo el mundo
+# cita, no contra GBA). OJO: es un benchmark de precios en general (todos
+# los rubros), no de alimentos — se explicita en la nota de la respuesta.
+SERIE_INDEC_NACIONAL = config.SERIE_IPC_NACIONAL_NIVEL_GENERAL
+
+# Comparativo POR RUBRO (/comparativo/{periodo}/rubros): sigue contra GBA,
+# porque el INDEC no publica un desglose por rubro a nivel Nacional (el
+# archivo de aperturas solo trae regiones: GBA, Pampeana, NOA, NEA, Cuyo,
+# Patagonia — ver comparativo.obtener_indices_indec_por_rubro).
 
 app = FastAPI(
     title="Índice de Alimentos y Bebidas — CABA",
@@ -62,6 +73,21 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+
+# ── Dashboard estático (rubros.html) ────────────────────────────────────────
+# Página simple sin build (HTML + JS vanilla) que consume esta misma API y
+# muestra el índice rubro por rubro. Se sirve directo desde acá para poder
+# abrirla tipeando la URL del deploy + /dashboard, sin manejar un archivo
+# aparte ni CORS entre dominios distintos.
+_DASHBOARD_PATH = Path(__file__).parent / "rubros.html"
+
+
+@app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def dashboard():
+    if not _DASHBOARD_PATH.exists():
+        raise HTTPException(404, "rubros.html no está presente junto a api.py en este deploy")
+    return _DASHBOARD_PATH.read_text(encoding="utf-8")
 
 
 # ── Modelos de respuesta (Pydantic) ─────────────────────────────────────────
@@ -323,7 +349,7 @@ def comparativo(periodo: str):
         inicio_periodo, _ = _periodo_a_rango_fechas(periodo)
         indec_actual = (
             db.query(SerieComparativaINDEC)
-            .filter(SerieComparativaINDEC.serie_id == SERIE_INDEC_ALIMENTOS,
+            .filter(SerieComparativaINDEC.serie_id == SERIE_INDEC_NACIONAL,
                     SerieComparativaINDEC.fecha == inicio_periodo)
             .first()
         )
@@ -334,14 +360,16 @@ def comparativo(periodo: str):
                 variacion_pct_propia=variacion_propia,
                 indec_disponible=False,
                 nota=(
-                    "El INDEC aún no publicó este período, o la serie no está "
-                    "cargada localmente. INDEC publica el día 14 del mes siguiente."
+                    "Comparado contra IPC Nivel General Nacional (todos los rubros, "
+                    "no solo alimentos). El INDEC aún no publicó este período, o la "
+                    "serie no está cargada localmente. INDEC publica el día 14 del "
+                    "mes siguiente."
                 ),
             )
 
         indec_anterior = (
             db.query(SerieComparativaINDEC)
-            .filter(SerieComparativaINDEC.serie_id == SERIE_INDEC_ALIMENTOS,
+            .filter(SerieComparativaINDEC.serie_id == SERIE_INDEC_NACIONAL,
                     SerieComparativaINDEC.fecha < inicio_periodo)
             .order_by(SerieComparativaINDEC.fecha.desc())
             .first()

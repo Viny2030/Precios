@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Índice de Alimentos y Bebidas — CABA · vs. INDEC</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #f5f6f8;
+    color: #1a1a1a;
+    margin: 0;
+    padding: 24px;
+  }
+  .wrap { max-width: 1140px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 20px; }
+
+  .controles {
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+    background: #fff; border: 1px solid #e2e4e8; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 18px;
+  }
+  .campo { display: flex; flex-direction: column; gap: 4px; }
+  .campo label { font-size: 12px; color: #666; }
+  .campo input {
+    border: 1px solid #d5d8dd; border-radius: 6px; padding: 7px 9px;
+    font-size: 14px; min-width: 170px;
+  }
+  button {
+    background: #2b6cb0; color: #fff; border: none; border-radius: 6px;
+    padding: 8px 16px; font-size: 14px; cursor: pointer;
+  }
+  button:hover { background: #245a94; }
+
+  .resumen {
+    display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 18px;
+  }
+  .tarjeta {
+    background: #fff; border: 1px solid #e2e4e8; border-radius: 10px;
+    padding: 12px 16px; min-width: 150px;
+  }
+  .tarjeta .valor { font-size: 22px; font-weight: 600; }
+  .tarjeta .etiqueta { font-size: 12px; color: #666; }
+  .tarjeta.indec { border-color: #cfe0f0; background: #f7fafd; }
+
+  table { width: 100%; border-collapse: collapse; background: #fff;
+    border: 1px solid #e2e4e8; border-radius: 10px; overflow: hidden; }
+  th, td { padding: 9px 12px; text-align: left; font-size: 13.5px; }
+  th {
+    background: #eef1f5; font-weight: 600; color: #444;
+    border-bottom: 1px solid #e2e4e8;
+  }
+  th.grupo-indec, td.grupo-indec { background: #f7fafd; }
+  tr:not(:last-child) td { border-bottom: 1px solid #eef0f3; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pos { color: #1a7f37; }
+  .neg { color: #c0342a; }
+  .muted { color: #999; }
+  .barra-fondo { background: #eef0f3; border-radius: 4px; height: 6px; margin-top: 4px; overflow: hidden; }
+  .barra { height: 100%; background: #2b6cb0; }
+
+  #estado { font-size: 13px; color: #666; margin-bottom: 10px; min-height: 18px; }
+  #estado.error { color: #c0342a; }
+  .nota-indec { font-size: 12px; color: #888; margin: -8px 0 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Índice de Alimentos y Bebidas — CABA</h1>
+  <div class="sub">Propio (SEPA) vs. INDEC — general vs. IPC Nivel General Nacional, por rubro vs. aperturas región GBA.</div>
+
+  <div class="controles">
+    <div class="campo">
+      <label for="apiBase">URL de la API</label>
+      <input id="apiBase" type="text" value="" placeholder="vacío = este mismo servidor, o https://tu-api.up.railway.app">
+    </div>
+    <div class="campo">
+      <label for="periodo">Período (YYYY-MM)</label>
+      <input id="periodo" type="text" value="2026-06" placeholder="2026-06">
+    </div>
+    <button onclick="cargar()">Cargar</button>
+  </div>
+
+  <div id="estado">Ingresá la URL de tu API y el período, y tocá "Cargar".</div>
+
+  <div class="resumen" id="resumen" style="display:none">
+    <div class="tarjeta">
+      <div class="valor" id="rIndiceGeneral">—</div>
+      <div class="etiqueta">Índice propio</div>
+    </div>
+    <div class="tarjeta">
+      <div class="valor" id="rVariacion">—</div>
+      <div class="etiqueta">Variación propia mensual</div>
+    </div>
+    <div class="tarjeta">
+      <div class="valor" id="rOrigen">—</div>
+      <div class="etiqueta">Origen de datos</div>
+    </div>
+    <div class="tarjeta indec">
+      <div class="valor" id="rIndecVar">—</div>
+      <div class="etiqueta">Var. INDEC Nacional (nivel gral.)</div>
+    </div>
+    <div class="tarjeta indec">
+      <div class="valor" id="rDiferencia">—</div>
+      <div class="etiqueta">Diferencia (propio − INDEC, en pp)</div>
+    </div>
+  </div>
+  <div class="nota-indec" id="notaIndec" style="display:none"></div>
+
+  <table id="tabla" style="display:none">
+    <thead>
+      <tr>
+        <th>Rubro</th>
+        <th>COICOP</th>
+        <th class="num">Índice propio</th>
+        <th class="num">Var. propia %</th>
+        <th class="num grupo-indec" title="Aperturas por rubro: el INDEC solo las publica por región (GBA), no a nivel Nacional">Var. INDEC % (GBA)</th>
+        <th class="num grupo-indec">Diferencia pp</th>
+        <th class="num">Ponderación</th>
+        <th class="num">Variedades</th>
+      </tr>
+    </thead>
+    <tbody id="filas"></tbody>
+  </table>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  // Recuerda la última URL/período usados en este navegador.
+  const guardado = JSON.parse(localStorage.getItem('rubros_config') || '{}');
+  if (guardado.apiBase) $('apiBase').value = guardado.apiBase;
+  if (guardado.periodo) $('periodo').value = guardado.periodo;
+
+  function fmtNum(x, dec = 2) {
+    return (x === null || x === undefined) ? '—' : Number(x).toFixed(dec);
+  }
+
+  function fmtVar(x, sufijo = '%') {
+    if (x === null || x === undefined) return '<span class="muted">—</span>';
+    const cls = x >= 0 ? 'pos' : 'neg';
+    const signo = x >= 0 ? '+' : '';
+    return `<span class="${cls}">${signo}${x.toFixed(2)}${sufijo}</span>`;
+  }
+
+  // Trae JSON de un endpoint. Si no existe (404) o falla, devuelve null en
+  // vez de cortar toda la carga — así la comparación INDEC es "best effort"
+  // y no tapa la tabla propia si todavía no hay serie INDEC cargada.
+  async function traerOpcional(url) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      return await r.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async function cargar() {
+    const apiBase = $('apiBase').value.replace(/\/$/, '');
+    const periodo = $('periodo').value.trim();
+    const estado = $('estado');
+    const resumen = $('resumen');
+    const tabla = $('tabla');
+    const notaIndec = $('notaIndec');
+
+    localStorage.setItem('rubros_config', JSON.stringify({ apiBase, periodo }));
+
+    estado.className = '';
+    estado.textContent = 'Cargando...';
+    resumen.style.display = 'none';
+    tabla.style.display = 'none';
+    notaIndec.style.display = 'none';
+
+    try {
+      const rGeneral = await fetch(`${apiBase}/indices/${periodo}`);
+      const rRubros = await fetch(`${apiBase}/indices/${periodo}/rubros`);
+
+      if (!rGeneral.ok) throw new Error(`/indices/${periodo} → HTTP ${rGeneral.status}`);
+      if (!rRubros.ok) throw new Error(`/indices/${periodo}/rubros → HTTP ${rRubros.status}`);
+
+      const general = await rGeneral.json();
+      const rubros = await rRubros.json();
+
+      // Comparativo contra INDEC: general + por rubro. No son bloqueantes —
+      // si el INDEC todavía no publicó el período, siguen null y la tabla
+      // muestra "—"

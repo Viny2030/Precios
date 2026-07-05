@@ -1,4 +1,4 @@
-﻿"""
+"""
 sembrar_desarrollo.py — SOLO PARA DESARROLLO. NO USAR EN PRODUCCIÓN.
 
 REESCRITO 2026-07-05. Enfoque anterior vs. actual:
@@ -57,7 +57,8 @@ logger = logging.getLogger("sembrar_dev")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 MARCA_SINTETICO = "SINTETICO_DEV"
-SERIE_INDEC_ALIMENTOS = config.SERIE_IPC_GBA_ALIMENTOS
+SERIE_INDEC_ALIMENTOS = config.SERIE_IPC_GBA_ALIMENTOS  # calibración sintético
+SERIE_INDEC_NACIONAL = config.SERIE_IPC_NACIONAL_NIVEL_GENERAL  # benchmark comparativo general
 DICCIONARIO_COICOP_PATH = Path(config.DATA_DIR) / "diccionario_coicop.csv"
 
 random.seed(42)
@@ -91,11 +92,12 @@ FECHA_MAYO = date(2026, 5, 15)
 FECHA_JUNIO = date(2026, 6, 15)
 
 
-def descargar_y_persistir_indec(db) -> pd.DataFrame:
-    logger.info(f"Descargando serie oficial INDEC (Alimentos y Bebidas GBA, {SERIE_INDEC_ALIMENTOS})")
-    df = comparativo.obtener_historico_indec()
+def _persistir_serie_generica(db, df: pd.DataFrame, serie_id: str, etiqueta: str) -> pd.DataFrame:
+    """Vuelca un DataFrame de obtener_historico_indec() a serie_comparativa_indec
+    bajo el serie_id pedido. Reutilizado para la serie de calibración
+    (Alimentos GBA) y para la serie de benchmark (Nivel General Nacional)."""
     if df.empty:
-        logger.error("No se pudo bajar la serie del INDEC — abortando")
+        logger.error(f"No se pudo bajar la serie del INDEC ({etiqueta}) — se sigue sin ella")
         return df
 
     df = df.copy()
@@ -105,7 +107,7 @@ def descargar_y_persistir_indec(db) -> pd.DataFrame:
     actualizados = 0
     for _, fila in df.iterrows():
         existente = db.query(SerieComparativaINDEC).filter_by(
-            fecha=fila["fecha"], serie_id=SERIE_INDEC_ALIMENTOS
+            fecha=fila["fecha"], serie_id=serie_id
         ).first()
         if existente:
             if float(existente.valor) != float(fila["indice_oficial_alimentos"]):
@@ -114,15 +116,33 @@ def descargar_y_persistir_indec(db) -> pd.DataFrame:
         else:
             db.add(SerieComparativaINDEC(
                 fecha=fila["fecha"],
-                serie_id=SERIE_INDEC_ALIMENTOS,
+                serie_id=serie_id,
                 valor=fila["indice_oficial_alimentos"],
             ))
             insertados += 1
 
     db.commit()
-    logger.info(f"Serie INDEC: {insertados} filas nuevas, {actualizados} actualizadas "
+    logger.info(f"Serie INDEC ({etiqueta}): {insertados} filas nuevas, {actualizados} actualizadas "
                 f"(último dato publicado: {df['fecha'].max()})")
     return df
+
+
+def descargar_y_persistir_indec(db) -> pd.DataFrame:
+    """Serie de CALIBRACIÓN (Alimentos y Bebidas GBA) — de acá salen las
+    variaciones var_abril/var_mayo/var_junio que arman el sintético. NO
+    tocar esto por la serie Nacional Nivel General: son cosas distintas."""
+    logger.info(f"Descargando serie oficial INDEC (Alimentos y Bebidas GBA, {SERIE_INDEC_ALIMENTOS})")
+    df = comparativo.obtener_historico_indec(SERIE_INDEC_ALIMENTOS)
+    return _persistir_serie_generica(db, df, SERIE_INDEC_ALIMENTOS, "Alimentos y Bebidas GBA")
+
+
+def descargar_y_persistir_indec_nacional(db) -> pd.DataFrame:
+    """Serie de BENCHMARK (Nivel General Nacional) — solo para el
+    comparativo general de la API (/comparativo/{periodo}). No se usa para
+    calibrar nada del sintético."""
+    logger.info(f"Descargando serie oficial INDEC (Nivel General Nacional, {SERIE_INDEC_NACIONAL})")
+    df = comparativo.obtener_historico_indec(SERIE_INDEC_NACIONAL)
+    return _persistir_serie_generica(db, df, SERIE_INDEC_NACIONAL, "Nivel General Nacional")
 
 
 def descargar_y_persistir_indec_por_rubro(db) -> None:
@@ -250,6 +270,7 @@ def main(solo_limpiar: bool = False):
 
         df_indec = descargar_y_persistir_indec(db)
         descargar_y_persistir_indec_por_rubro(db)
+        descargar_y_persistir_indec_nacional(db)
         if df_indec.empty:
             logger.warning(
                 "Sin serie INDEC (red caida o catalogo cambio de nuevo). "

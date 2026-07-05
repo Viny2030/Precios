@@ -16,10 +16,6 @@ scipy==1.13.0
 # el archivo del INDEC en formato Excel 97-2003.
 xlrd==2.0.1
 
-# Visualización / Dashboard
-streamlit==1.35.0
-plotly==5.22.0
-
-# API REST
+# API REST (salida elegida: FastAPI, no Streamlit)
 fastapi==0.111.0
 uvicorn[standard]==0.30.1

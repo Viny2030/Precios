@@ -26,6 +26,18 @@ precios_seed_ponderaciones.py para las ponderaciones, pero en la hoja
 región GBA, el nivel de índice mensual de cada rubro (Pan y cereales,
 Carnes y derivados, etc.) — exactamente la misma agrupación que usamos
 para las 11 subclases COICOP de la canasta.
+
+AGREGADO 2026-07-10: funciones persistir_serie() / actualizar_serie_*() —
+antes la lógica de "bajar del INDEC y guardar en serie_comparativa_indec"
+vivía duplicada dentro de sembrar_desarrollo.py (que además mezcla eso con
+la siembra de precios sintéticos). Se movió acá para poder reusarla desde
+un script liviano (actualizar_series_oficiales.py) que SOLO refresca las
+series de comparación —sin tocar sintéticos— pensado para correr después
+del día 14 de cada mes (cuando el INDEC/GCBA publican el dato del mes
+anterior). Se agregó también actualizar_serie_gcba_alimentos(): la serie
+config.SERIE_IPC_CABA_ALIMENTOS estaba declarada en config.py pero nunca
+se descargaba ni se guardaba en ningún lado — por eso el comparativo
+general nunca podía mostrar GCBA, solo INDEC.
 """
 from __future__ import annotations
 
@@ -34,8 +46,10 @@ import logging
 
 import pandas as pd
 import requests
+from sqlalchemy.orm import Session
 
 import config
+from models import SerieComparativaINDEC
 
 logger = logging.getLogger("comparativo")
 
@@ -180,3 +194,121 @@ def obtener_indices_indec_por_rubro(columna_region: str = "GBA") -> pd.DataFrame
     logger.info(f"Índices por rubro (región {columna_region}): {n_rubros}/{len(MAPEO_FILA_A_CODIGO)} "
                 f"rubros con serie, hasta {df_largo['fecha'].max()}")
     return df_largo
+
+
+# ── Persistencia en serie_comparativa_indec ─────────────────────────────────
+# A partir de acá: funciones que bajan una serie oficial y la vuelcan a la
+# base, para que la API (api.py) y el dashboard (rubros.html) las puedan leer
+# sin volver a pegarle a datos.gob.ar/INDEC en cada request.
+
+def persistir_serie(db: Session, df: pd.DataFrame, serie_id: str, etiqueta: str) -> pd.DataFrame:
+    """Vuelca un DataFrame de obtener_historico_indec() (columnas 'fecha',
+    'indice_oficial_alimentos') a serie_comparativa_indec bajo el serie_id
+    pedido. Upsert por (fecha, serie_id). No hace commit si el DataFrame
+    viene vacío (descarga falló)."""
+    if df.empty:
+        logger.error(f"No se pudo bajar la serie oficial ({etiqueta}, {serie_id}) — se sigue sin ella")
+        return df
+
+    df = df.copy()
+    df["fecha"] = df["fecha"].dt.to_timestamp().dt.date
+
+    insertados = 0
+    actualizados = 0
+    for _, fila in df.iterrows():
+        existente = db.query(SerieComparativaINDEC).filter_by(
+            fecha=fila["fecha"], serie_id=serie_id
+        ).first()
+        if existente:
+            if float(existente.valor) != float(fila["indice_oficial_alimentos"]):
+                existente.valor = fila["indice_oficial_alimentos"]
+                actualizados += 1
+        else:
+            db.add(SerieComparativaINDEC(
+                fecha=fila["fecha"], serie_id=serie_id, valor=fila["indice_oficial_alimentos"],
+            ))
+            insertados += 1
+
+    db.commit()
+    logger.info(f"Serie oficial ({etiqueta}): {insertados} filas nuevas, {actualizados} actualizadas "
+                f"(último dato: {df['fecha'].max()})")
+    return df
+
+
+def actualizar_serie_gba_alimentos(db: Session) -> pd.DataFrame:
+    """Serie de CALIBRACIÓN (Alimentos y Bebidas GBA, INDEC) — de acá salen
+    las variaciones que usa sembrar_desarrollo.py para armar el sintético
+    abril/mayo/junio."""
+    df = obtener_historico_indec(config.SERIE_IPC_GBA_ALIMENTOS)
+    return persistir_serie(db, df, config.SERIE_IPC_GBA_ALIMENTOS, "Alimentos y Bebidas GBA (INDEC)")
+
+
+def actualizar_serie_nacional_general(db: Session) -> pd.DataFrame:
+    """Serie de BENCHMARK Nivel General Nacional (INDEC) — la que sale en
+    los diarios como "la inflación del mes". Alimenta /comparativo/{periodo}
+    y /comparativo/evolucion/general."""
+    df = obtener_historico_indec(config.SERIE_IPC_NACIONAL_NIVEL_GENERAL)
+    return persistir_serie(db, df, config.SERIE_IPC_NACIONAL_NIVEL_GENERAL, "Nivel General Nacional (INDEC)")
+
+
+def actualizar_serie_gcba_alimentos(db: Session) -> pd.DataFrame:
+    """Serie oficial del GCBA (Alimentos y Bebidas no alcohólicas, específica
+    de CABA — no una región agregada como GBA). Estaba declarada en
+    config.SERIE_IPC_CABA_ALIMENTOS pero, hasta ahora, nunca se descargaba:
+    esta función es la que faltaba para que el comparativo general pueda
+    mostrar GCBA además de INDEC."""
+    df = obtener_historico_indec(config.SERIE_IPC_CABA_ALIMENTOS)
+    return persistir_serie(
+        db, df, config.SERIE_IPC_CABA_ALIMENTOS,
+        "Alimentos y Bebidas no alcohólicas CABA (GCBA)",
+    )
+
+
+def actualizar_indec_por_rubro(db: Session, columna_region: str = "GBA") -> pd.DataFrame:
+    """Descarga las aperturas por rubro del INDEC (obtener_indices_indec_por_rubro)
+    y las vuelca a serie_comparativa_indec con serie_id = 'APERTURA_<coicop_subclase>'.
+    Alimenta /comparativo/{periodo}/rubros y /comparativo/evolucion/rubro/{coicop}."""
+    df = obtener_indices_indec_por_rubro(columna_region)
+    if df.empty:
+        logger.warning("No se pudo bajar el desglose por rubro del INDEC — los endpoints "
+                        "de comparativo por rubro van a quedar sin datos INDEC por ahora.")
+        return df
+
+    df = df.copy()
+    df["fecha"] = df["fecha"].dt.to_timestamp().dt.date
+
+    insertados = 0
+    actualizados = 0
+    for _, fila in df.iterrows():
+        serie_id = f"APERTURA_{fila['coicop_subclase']}"
+        existente = db.query(SerieComparativaINDEC).filter_by(
+            fecha=fila["fecha"], serie_id=serie_id
+        ).first()
+        if existente:
+            if float(existente.valor) != float(fila["indice_indec"]):
+                existente.valor = fila["indice_indec"]
+                actualizados += 1
+        else:
+            db.add(SerieComparativaINDEC(
+                fecha=fila["fecha"], serie_id=serie_id, valor=fila["indice_indec"],
+            ))
+            insertados += 1
+
+    db.commit()
+    logger.info(f"Índices INDEC por rubro: {insertados} filas nuevas, {actualizados} actualizadas "
+                f"({df['coicop_subclase'].nunique()} rubros, hasta {df['fecha'].max()})")
+    return df
+
+
+def actualizar_todas_las_series(db: Session) -> dict[str, pd.DataFrame]:
+    """Descarga y persiste las 4 series oficiales que usa el sistema (GBA
+    Alimentos, Nacional Nivel General, GCBA Alimentos CABA, aperturas por
+    rubro). Punto de entrada único, usado tanto por sembrar_desarrollo.py
+    (bootstrap con sintéticos) como por actualizar_series_oficiales.py
+    (refresco periódico sin tocar sintéticos)."""
+    return {
+        "gba_alimentos": actualizar_serie_gba_alimentos(db),
+        "nacional_general": actualizar_serie_nacional_general(db),
+        "gcba_alimentos": actualizar_serie_gcba_alimentos(db),
+        "aperturas_rubro": actualizar_indec_por_rubro(db),
+    }

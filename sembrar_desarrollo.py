@@ -35,6 +35,14 @@ Idempotente: borra los registros/eans sintéticos previos (fecha < julio
 2026, cadena SINTETICO_DEV) antes de regenerar. No toca nada con fecha
 >= julio (ahí vive exclusivamente el dato real de la ingesta).
 
+ACTUALIZADO 2026-07-10: la descarga/persistencia de las series oficiales
+(GBA Alimentos, Nacional, GCBA, aperturas por rubro) se movió a
+comparativo.py (actualizar_serie_*() / actualizar_todas_las_series()) para
+poder reusarla desde actualizar_series_oficiales.py sin arrastrar toda la
+siembra de sintéticos. Este script ahora solo llama a esas funciones.
+También se agregó la descarga de la serie GCBA (antes declarada en
+config.py pero nunca usada en ningún lado).
+
 Uso:
     python sembrar_desarrollo.py
     python sembrar_desarrollo.py --limpiar   # solo borra, no re-genera
@@ -51,7 +59,7 @@ import pandas as pd
 
 import comparativo
 import config
-from models import MaestroProducto, RegistroPrecio, SerieComparativaINDEC, SessionLocal, crear_tablas
+from models import MaestroProducto, RegistroPrecio, SessionLocal, crear_tablas
 
 logger = logging.getLogger("sembrar_dev")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -92,57 +100,28 @@ FECHA_MAYO = date(2026, 5, 15)
 FECHA_JUNIO = date(2026, 6, 15)
 
 
-def _persistir_serie_generica(db, df: pd.DataFrame, serie_id: str, etiqueta: str) -> pd.DataFrame:
-    """Vuelca un DataFrame de obtener_historico_indec() a serie_comparativa_indec
-    bajo el serie_id pedido. Reutilizado para la serie de calibración
-    (Alimentos GBA) y para la serie de benchmark (Nivel General Nacional)."""
-    if df.empty:
-        logger.error(f"No se pudo bajar la serie del INDEC ({etiqueta}) — se sigue sin ella")
-        return df
-
-    df = df.copy()
-    df["fecha"] = df["fecha"].dt.to_timestamp().dt.date
-
-    insertados = 0
-    actualizados = 0
-    for _, fila in df.iterrows():
-        existente = db.query(SerieComparativaINDEC).filter_by(
-            fecha=fila["fecha"], serie_id=serie_id
-        ).first()
-        if existente:
-            if float(existente.valor) != float(fila["indice_oficial_alimentos"]):
-                existente.valor = fila["indice_oficial_alimentos"]
-                actualizados += 1
-        else:
-            db.add(SerieComparativaINDEC(
-                fecha=fila["fecha"],
-                serie_id=serie_id,
-                valor=fila["indice_oficial_alimentos"],
-            ))
-            insertados += 1
-
-    db.commit()
-    logger.info(f"Serie INDEC ({etiqueta}): {insertados} filas nuevas, {actualizados} actualizadas "
-                f"(último dato publicado: {df['fecha'].max()})")
-    return df
-
-
 def descargar_y_persistir_indec(db) -> pd.DataFrame:
     """Serie de CALIBRACIÓN (Alimentos y Bebidas GBA) — de acá salen las
     variaciones var_abril/var_mayo/var_junio que arman el sintético. NO
     tocar esto por la serie Nacional Nivel General: son cosas distintas."""
     logger.info(f"Descargando serie oficial INDEC (Alimentos y Bebidas GBA, {SERIE_INDEC_ALIMENTOS})")
-    df = comparativo.obtener_historico_indec(SERIE_INDEC_ALIMENTOS)
-    return _persistir_serie_generica(db, df, SERIE_INDEC_ALIMENTOS, "Alimentos y Bebidas GBA")
+    return comparativo.actualizar_serie_gba_alimentos(db)
 
 
 def descargar_y_persistir_indec_nacional(db) -> pd.DataFrame:
-    """Serie de BENCHMARK (Nivel General Nacional) — solo para el
-    comparativo general de la API (/comparativo/{periodo}). No se usa para
-    calibrar nada del sintético."""
+    """Serie de BENCHMARK (Nivel General Nacional) — para el comparativo
+    general de la API (/comparativo/{periodo} y /comparativo/evolucion/general).
+    No se usa para calibrar nada del sintético."""
     logger.info(f"Descargando serie oficial INDEC (Nivel General Nacional, {SERIE_INDEC_NACIONAL})")
-    df = comparativo.obtener_historico_indec(SERIE_INDEC_NACIONAL)
-    return _persistir_serie_generica(db, df, SERIE_INDEC_NACIONAL, "Nivel General Nacional")
+    return comparativo.actualizar_serie_nacional_general(db)
+
+
+def descargar_y_persistir_gcba(db) -> pd.DataFrame:
+    """Serie oficial del GCBA (Alimentos y Bebidas no alcohólicas, CABA) —
+    estaba declarada en config.SERIE_IPC_CABA_ALIMENTOS pero nunca se
+    descargaba. Alimenta /comparativo/evolucion/general junto con INDEC."""
+    logger.info(f"Descargando serie oficial GCBA (Alimentos y Bebidas CABA, {config.SERIE_IPC_CABA_ALIMENTOS})")
+    return comparativo.actualizar_serie_gcba_alimentos(db)
 
 
 def descargar_y_persistir_indec_por_rubro(db) -> None:
@@ -150,37 +129,9 @@ def descargar_y_persistir_indec_por_rubro(db) -> None:
     comparativo.obtener_indices_indec_por_rubro) y lo vuelca a
     serie_comparativa_indec con serie_id = 'APERTURA_<coicop_subclase>'.
     Es lo que permite comparar CADA RUBRO (no solo el total) contra el
-    INDEC en /comparativo/{periodo}/rubros."""
+    INDEC en /comparativo/{periodo}/rubros y /comparativo/evolucion/rubro/{coicop}."""
     logger.info("Descargando índices INDEC por rubro (aperturas GBA)...")
-    df = comparativo.obtener_indices_indec_por_rubro()
-    if df.empty:
-        logger.warning("No se pudo bajar el desglose por rubro del INDEC — "
-                        "/comparativo/{periodo}/rubros va a quedar sin datos INDEC por ahora.")
-        return
-
-    df = df.copy()
-    df["fecha"] = df["fecha"].dt.to_timestamp().dt.date
-
-    insertados = 0
-    actualizados = 0
-    for _, fila in df.iterrows():
-        serie_id = f"APERTURA_{fila['coicop_subclase']}"
-        existente = db.query(SerieComparativaINDEC).filter_by(
-            fecha=fila["fecha"], serie_id=serie_id
-        ).first()
-        if existente:
-            if float(existente.valor) != float(fila["indice_indec"]):
-                existente.valor = fila["indice_indec"]
-                actualizados += 1
-        else:
-            db.add(SerieComparativaINDEC(
-                fecha=fila["fecha"], serie_id=serie_id, valor=fila["indice_indec"],
-            ))
-            insertados += 1
-
-    db.commit()
-    logger.info(f"Índices INDEC por rubro: {insertados} filas nuevas, {actualizados} actualizadas "
-                f"({df['coicop_subclase'].nunique()} rubros, hasta {df['fecha'].max()})")
+    comparativo.actualizar_indec_por_rubro(db)
 
 
 def calcular_variaciones_indec(df_indec: pd.DataFrame) -> dict[str, float]:
@@ -271,6 +222,7 @@ def main(solo_limpiar: bool = False):
         df_indec = descargar_y_persistir_indec(db)
         descargar_y_persistir_indec_por_rubro(db)
         descargar_y_persistir_indec_nacional(db)
+        descargar_y_persistir_gcba(db)
         if df_indec.empty:
             logger.warning(
                 "Sin serie INDEC (red caida o catalogo cambio de nuevo). "

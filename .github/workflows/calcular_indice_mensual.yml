@@ -1,0 +1,81 @@
+name: Calcular índice mensual (mes real cerrado)
+
+# Cierra el mes anterior: corre calcular_indice_mensual.py sobre los precios
+# reales ya persistidos por la ingesta diaria y guarda el resultado en
+# indice_calculado (nivel "general" y "coicop_subclase"). Sin este workflow,
+# los meses reales (julio 2026 en adelante) nunca aparecían en /indices ni
+# en el dashboard aunque la ingesta los estuviera cargando — había que
+# correrlo a mano cada mes.
+#
+# - Automático: el día 2 de cada mes a las 08:00 UTC (~05:00 ART), calcula
+#   el mes que acaba de cerrar (ej. el 2/08 calcula julio). Un día de
+#   margen sobre el cierre de mes por si la ingesta del 31/30 corrió tarde.
+# - Manual (workflow_dispatch): permite recalcular un período puntual
+#   (útil si se amplía el diccionario COICOP y hay que refrescar un mes ya
+#   calculado, o para recuperar un mes que este workflow no llegó a correr).
+#   Dejar "periodo" vacío para que calcule el mes anterior al de hoy, igual
+#   que la corrida automática.
+
+on:
+  schedule:
+    - cron: "0 8 2 * *"
+  workflow_dispatch:
+    inputs:
+      periodo:
+        description: >
+          Período a calcular, formato YYYY-MM (ej. "2026-07"). Dejar vacío
+          para calcular el mes calendario anterior al de hoy.
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: calcular-indice-mensual
+  cancel-in-progress: false
+
+jobs:
+  calcular:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Determinar período a calcular
+        id: periodo
+        run: |
+          if [ -n "${{ github.event.inputs.periodo }}" ]; then
+            PERIODO="${{ github.event.inputs.periodo }}"
+            echo "Período forzado manualmente: $PERIODO"
+          else
+            # "yesterday" en el día 1 o 2 del mes cae siempre en el mes
+            # calendario anterior — no depende de si el mes tiene 28/30/31 días.
+            PERIODO=$(date -u -d "yesterday" +%Y-%m)
+            echo "Período automático (mes anterior a hoy): $PERIODO"
+          fi
+          echo "valor=$PERIODO" >> "$GITHUB_OUTPUT"
+
+      - name: Calcular índice del período
+        run: python calcular_indice_mensual.py "${{ steps.periodo.outputs.valor }}"
+
+      - name: Commitear índice actualizado
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/indice_caba.sqlite
+          if git diff --cached --quiet; then
+            echo "Sin cambios para commitear (sin precios reales todavía para ${{ steps.periodo.outputs.valor }}, o el cálculo falló — revisar el log de arriba)."
+          else
+            git commit -m "Calcular índice ${{ steps.periodo.outputs.valor }} $(date -u +%Y-%m-%d)"
+            git push
+          fi

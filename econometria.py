@@ -159,10 +159,11 @@ def agregacion_laspeyres(
     peso_cubierto = merged["ponderacion_caba"].sum()
     cobertura = float(peso_cubierto / peso_total_canasta) if peso_total_canasta else 0.0
 
-    if cobertura < 0.0:
+    if cobertura < config.COBERTURA_MINIMA:
         logger.warning(
-            f"Cobertura de ponderación muy baja ({cobertura:.1%}) — el índice de este "
-            f"período no sería representativo. No se calcula un valor."
+            f"Cobertura de ponderación muy baja ({cobertura:.1%}, mínimo "
+            f"{config.COBERTURA_MINIMA:.0%}) — el índice de este período no sería "
+            f"representativo. No se calcula un valor."
         )
         return None
 

@@ -63,7 +63,7 @@ SERIE_IPC_NACIONAL_NIVEL_GENERAL = "148.3_INIVELNAL_DICI_M_26"  # INDEC, IPC Nac
 # Por defecto usamos SQLite para desarrollo local ágil. En producción, seteá
 # DATABASE_URL como variable de entorno (postgresql://...).
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+DATA_DIR = os.path.join(BASE_DIR, "../data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 DB_PATH = os.path.join(DATA_DIR, "indice_caba.sqlite")
@@ -83,6 +83,11 @@ DIVISIONES_COICOP = ["01", "02"]
 # múltiplo respecto a la mediana del EAN en ese mes, se descarta como error de
 # carga antes de calcular la media geométrica mensual (Fase I).
 UMBRAL_OUTLIER_RATIO = 5.0
+# Cobertura mínima de ponderación (fracción del peso total de la canasta
+# ENGHo) que tiene que estar cubierta por subclases con índice calculado
+# para publicar un índice general de ese período. 0.5 = al menos la mitad
+# del peso de la canasta tiene que tener datos reales ese mes.
+COBERTURA_MINIMA = 0.5
 
 # User-Agent honesto para las descargas — identifica el proyecto, no intenta
 # hacerse pasar por un navegador para evadir controles anti-bot.

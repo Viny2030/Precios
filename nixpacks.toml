@@ -1,0 +1,13 @@
+# nixpacks.toml — necesario porque data/indice_caba.sqlite se versiona con
+# Git LFS. Sin git-lfs instalado y sin "git lfs pull", Railway clona el
+# repo y el archivo queda como el puntero de texto de LFS (~130 bytes) en
+# vez de la base real, y la API arranca con una base vacía/corrupta.
+[phases.setup]
+aptPkgs = ["git-lfs"]
+
+[phases.install]
+cmds = [
+  "git lfs install",
+  "git lfs pull",
+  "pip install -r requirements.txt"
+]

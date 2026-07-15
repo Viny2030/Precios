@@ -2,32 +2,34 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Índice de Alimentos y Bebidas — CABA · vs. GCBA / INDEC</title>
+<title>Observatorio de Precios alimentos y bebidas - nueva canasta-mensual y rubros</title>
 <style>
   :root {
     color-scheme: light;
-    --col-propio:      #2563eb;    --bg-propio:      #eaf2fe;
+    --col-propio:      #7c3aed;    --bg-propio:      #f1eafd;
     --col-gcba:        #0d9488;    --bg-gcba:        #e3f6f3;
     --col-indec:       #d97706;    --bg-indec:        #fdf0dd;
-    --col-indec-rubro: #7c3aed;    --bg-indec-rubro:  #f1eafd;
+    --col-indec-rubro: #4c1d95;    --bg-indec-rubro:  #ede9fe;
     --col-gba:         #db2777;    --bg-gba:          #fceaf2;
+    --col-violeta-osc: #4c1d95;
+    --col-violeta-claro: #a78bfa;
     --pos: #1a7f37;
     --neg: #c0342a;
   }
   * { box-sizing: border-box; }
   body {
     font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    background: #f5f6f8;
+    background: #f6f4fb;
     color: #1a1a1a;
     margin: 0;
     padding: 24px;
   }
   .wrap { max-width: 1320px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 { font-size: 20px; margin: 0 0 4px; color: var(--col-violeta-osc); }
   .sub { color: #666; font-size: 13px; margin-bottom: 18px; }
 
   /* Pestañas */
-  .tabs { display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 2px solid #e2e4e8; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 2px solid #e4dbf7; }
   .tab-btn {
     background: none; border: none; border-bottom: 2px solid transparent;
     margin-bottom: -2px; padding: 10px 16px; font-size: 14px; font-weight: 600;
@@ -47,7 +49,7 @@
 
   .controles {
     display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
-    background: #fff; border: 1px solid #e2e4e8; border-radius: 10px;
+    background: #fff; border: 1px solid #e4dbf7; border-radius: 10px;
     padding: 14px 16px; margin-bottom: 14px;
   }
   .campo { display: flex; flex-direction: column; gap: 4px; }
@@ -59,11 +61,11 @@
 
   .tabla-scroll { overflow-x: auto; margin-bottom: 22px; border-radius: 10px; }
   table { width: 100%; border-collapse: collapse; background: #fff;
-    border: 1px solid #e2e4e8; border-radius: 10px; overflow: hidden; }
+    border: 1px solid #e4dbf7; border-radius: 10px; overflow: hidden; }
   th, td { padding: 8px 11px; text-align: left; font-size: 13px; white-space: nowrap; }
   th {
-    background: #eef1f5; font-weight: 600; color: #444;
-    border-bottom: 1px solid #e2e4e8;
+    background: #f1eafd; font-weight: 600; color: #444;
+    border-bottom: 1px solid #e4dbf7;
   }
   th.g-propio, td.g-propio { background: var(--bg-propio); }
   th.g-gcba,   td.g-gcba   { background: var(--bg-gcba); }
@@ -94,11 +96,42 @@
   .vacio { font-size: 13.5px; color: #888; padding: 18px; text-align: center; background: #fff;
     border: 1px dashed #d5d8dd; border-radius: 10px; margin-bottom: 22px; }
   .tab-panel[hidden] { display: none; }
+
+  /* ── Pie: aviso legal, autor, donación ─────────────────────────────────── */
+  .pie {
+    margin-top: 28px; padding-top: 22px; border-top: 3px solid var(--col-violeta-claro);
+  }
+  .pie-bloque {
+    background: #fff; border: 1px solid #e4dbf7; border-radius: 10px;
+    padding: 16px 18px; margin-bottom: 16px;
+  }
+  .pie-bloque h2 {
+    font-size: 14.5px; margin: 0 0 8px; color: var(--col-violeta-osc);
+  }
+  .pie-bloque p { font-size: 12.5px; line-height: 1.55; color: #444; margin: 0 0 10px; }
+  .pie-bloque p:last-child { margin-bottom: 0; }
+  .pie-bloque a { color: var(--col-propio); text-decoration: none; font-weight: 600; }
+  .pie-bloque a:hover { text-decoration: underline; }
+  .aviso { background: var(--bg-propio); border: 1px solid #ddc9fb; }
+  .autor-nombre { font-size: 14px; font-weight: 700; color: #2a1350; margin-bottom: 2px; }
+  .autor-titulo { font-size: 12px; color: #6b21a8; font-weight: 600; margin-bottom: 8px; }
+  .donacion-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px; margin-top: 10px;
+  }
+  .donacion-cuenta {
+    background: var(--bg-propio); border: 1px solid #ddc9fb; border-radius: 8px;
+    padding: 10px 12px; font-size: 12px; color: #3b0764;
+  }
+  .donacion-cuenta strong { display: block; font-size: 12.5px; margin-bottom: 6px; color: var(--col-violeta-osc); }
+  .donacion-cuenta .fila { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+  .donacion-cuenta .fila span:first-child { color: #7c5ca3; }
+  .donacion-cuenta .fila span:last-child { font-weight: 600; text-align: right; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Índice de Alimentos y Bebidas — CABA</h1>
+  <h1>Observatorio de Precios alimentos y bebidas - nueva canasta-mensual y rubros</h1>
   <div class="sub">Propio (SEPA) vs. GCBA vs. INDEC — evolución general y por rubro. Base {{PERIODO_BASE}} = 100.</div>
 
   <div class="tabs">
@@ -192,6 +225,73 @@
     </div>
     <div id="vacio-rubro" class="vacio" style="display:none">Todavía no hay índice calculado para este rubro.</div>
   </section>
+
+  <!-- ── Pie: aviso legal, autor, donación ── -->
+  <footer class="pie">
+    <div class="pie-bloque aviso">
+      <h2>⚠️ Nota</h2>
+      <p>Esta herramienta es de carácter experimental y académico. Los datos provienen de fuentes públicas oficiales
+      (Ministerio de Economía de la Nación, INDEC y Portal BA Data / GCBA). Los índices publicados son estimaciones
+      estadísticas de precios (nowcasting) sobre una canasta propia — no son la medición oficial del INDEC ni la
+      reemplazan, y no constituyen asesoramiento financiero. El objetivo es promover la transparencia y el debate
+      informado sobre la evolución de precios de alimentos y bebidas.</p>
+    </div>
+
+    <div class="pie-bloque">
+      <h2>⚖️ Marco Legal y Transparencia</h2>
+      <p>Los datos publicados en este portal provienen exclusivamente de fuentes oficiales del Estado argentino. Su
+      reutilización está amparada por la <strong>Ley N° 27.275 de Derecho de Acceso a la Información Pública</strong>,
+      que obliga a los organismos públicos a publicar activamente la información que producen, obtienen, transforman
+      o controlan, y por el <strong>Decreto 1172/2003</strong> sobre libre acceso a la información pública en el
+      Poder Ejecutivo Nacional. No se utilizan datos sintéticos ni simulados para publicar índices oficiales del
+      sitio (los períodos calculados con precios de referencia se marcan explícitamente como "Sintético" en las
+      tablas de arriba).</p>
+    </div>
+
+    <div class="pie-bloque">
+      <h2>Autor</h2>
+      <div class="autor-nombre">Ph.D. Vicente Humberto Monteverde</div>
+      <div class="autor-titulo">Investigador en economía política · Doctor en Ciencias Económicas</div>
+      <p>Autor de la teoría de Transferencia Regresiva de Ingresos. Publicaciones en Journal of Financial Crime
+      (Emerald Publishing).</p>
+      <p>
+        ✉️ <a href="mailto:vhmonte@retina.ar">vhmonte@retina.ar</a> ·
+        ✉️ <a href="mailto:viny01958@gmail.com">viny01958@gmail.com</a>
+      </p>
+    </div>
+
+    <div class="pie-bloque">
+      <h2>💛 Apoyar este proyecto — Donaciones voluntarias</h2>
+      <p>Si este proyecto te resulta útil, podés apoyarlo con una donación voluntaria.</p>
+      <div class="donacion-grid">
+        <div class="donacion-cuenta">
+          <strong>🇦🇷 Argentina · Pesos (ARS)</strong>
+          <div class="fila"><span>Tipo</span><span>Caja de Ahorro</span></div>
+          <div class="fila"><span>CBU</span><span>0140005203400552652310</span></div>
+          <div class="fila"><span>Alias</span><span>ALGORIT.MONTE.PESOS</span></div>
+          <div class="fila"><span>Titular</span><span>Vicente Humberto Monteverde</span></div>
+          <div class="fila"><span>CUIL/CUIT</span><span>20-12034411-1</span></div>
+        </div>
+        <div class="donacion-cuenta">
+          <strong>🇦🇷 Argentina · Dólares (USD)</strong>
+          <div class="fila"><span>Tipo</span><span>Caja de Ahorro Dólares</span></div>
+          <div class="fila"><span>CBU</span><span>0140005204400550329709</span></div>
+          <div class="fila"><span>Alias</span><span>ALGO.MONTE.DOLARES</span></div>
+          <div class="fila"><span>Titular</span><span>Vicente Humberto Monteverde</span></div>
+          <div class="fila"><span>CUIL/CUIT</span><span>20-12034411-1</span></div>
+        </div>
+        <div class="donacion-cuenta">
+          <strong>🌐 Desde el Exterior (USD Wire)</strong>
+          <div class="fila"><span>Banco</span><span>Banco Santander Río / Uruguay</span></div>
+          <div class="fila"><span>Beneficiario</span><span>Vicente Humberto Monteverde</span></div>
+          <div class="fila"><span>Dirección</span><span>Av. Directorio 3024 PB DTO 04</span></div>
+          <div class="fila"><span>Cuenta USD</span><span>005200183500</span></div>
+          <div class="fila"><span>SWIFT / BIC</span><span>BSCHUYMM</span></div>
+          <div class="fila"><span>CUIT</span><span>20-12034411-1</span></div>
+        </div>
+      </div>
+    </div>
+  </footer>
 </div>
 
 <script>

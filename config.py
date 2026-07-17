@@ -63,7 +63,11 @@ SERIE_IPC_NACIONAL_NIVEL_GENERAL = "148.3_INIVELNAL_DICI_M_26"  # INDEC, IPC Nac
 # Por defecto usamos SQLite para desarrollo local ágil. En producción, seteá
 # DATABASE_URL como variable de entorno (postgresql://...).
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "../data")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+# FIX 2026-07-17: antes decia "../data" (un nivel arriba del repo/checkout).
+# En GitHub Actions eso apunta fuera del working copy -> cada corrida escribia
+# en un sqlite nuevo y vacio que nunca se commiteaba (git add data/... siempre
+# veia "sin cambios"). Ver revision de codigo del 2026-07-17.
 os.makedirs(DATA_DIR, exist_ok=True)
 
 DB_PATH = os.path.join(DATA_DIR, "indice_caba.sqlite")

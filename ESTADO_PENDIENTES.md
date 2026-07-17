@@ -1,71 +1,105 @@
 # Estado de pendientes (julio 2026)
 
-Seguimiento de los 3 puntos que no eran accionables como cambio de código
-inmediato, para no perderlos de vista.
+Actualizado 2026-07-17 tras revisión de código y confirmación del estado de
+las 4 automatizaciones en GitHub Actions.
 
-## 1. Julio no calcula contra la base sintética de junio
+## 0. BUG CRÍTICO encontrado y corregido — `config.DATA_DIR` apuntaba fuera del repo
 
-**Estado: bloqueado hasta que cierre julio — no accionable hoy.**
+**Estado: corregido en esta entrega.**
 
-0 EANs en común entre julio y la base sintética de junio no es un problema
-de datos incompletos: es esperado mientras julio siga corriendo con su
-propio relevamiento y junio siga siendo sintético/de referencia.
+`config.py` calculaba `DATA_DIR = os.path.join(BASE_DIR, "../data")` (con
+`"../"`). Como `BASE_DIR` es la carpeta donde vive `config.py` (la raíz del
+repo, donde también vive `data/`), ese `"../"` de más hacía que **todos**
+los scripts (vía `config.DATA_DIR` / `config.DB_PATH`) leyeran y escribieran
+en una carpeta `data/` **hermana** de la raíz del repo, no en
+`<repo>/data/`.
 
-Acción a tomar (recién cuando julio cierre completo, coincide con la corrida
-automática del 2/08 — ver `.github/workflows/recalcular_sintetico.yml`):
+Impacto concreto en los 4 workflows: los 4 hacen `git add data/indice_caba.sqlite ...`
+relativo a la raíz del checkout — es decir, el archivo versionado con LFS.
+Pero como cada corrida (en un runner efímero de GitHub Actions, o en
+Windows local) escribía en la carpeta hermana en vez de `<repo>/data/`, ese
+`git add` nunca veía cambios reales: probablemente por eso las corridas
+mostraban "OK" (sin error) pero también es consistente con `git diff --cached`
+saliendo vacío silenciosamente en más de una corrida. Esto explica por qué
+es tan importante el pendiente "probar que el deploy en Railway levante con
+datos" — con este bug, un deploy fresco en Railway habría arrancado con una
+base sqlite nueva y vacía en vez de la real.
 
-1. Confirmar que el INDEC ya publicó julio real (día 14/08 es la fecha
-   habitual de publicación — verificar que efectivamente haya salido antes
-   de tocar nada).
-2. Redefinir `config.PERIODO_BASE` (hoy `"2026-06"`) con el nuevo período
-   base oficial y la canasta real (no sintética).
-3. Correr `sembrar_desarrollo.py` + `calcular_indice_mensual.py` para
-   recalcular abril–julio con la base nueva (mismo flujo que ya usa
-   `recalcular_sintetico.yml`).
-4. Verificar en `/comparativo/evolucion/general` que julio ya compare con
-   `origen_datos = "real"` y no `"sintetico_dev"`.
+Fix aplicado: `DATA_DIR = os.path.join(BASE_DIR, "data")` (una línea, en
+`config.py`). Verificado que ahora resuelve exactamente a `<repo>/data/`.
 
-No se toca `config.py` en esta entrega porque hacerlo antes de que cierre
-julio dejaría el sistema calculando contra una base que todavía no existe.
+**Acción recomendada antes de confiar en las últimas corridas de los 4
+workflows:** re-disparar cada uno manualmente (Actions → Run workflow) con
+el fix aplicado y confirmar que esta vez sí generan un commit con cambios
+reales en `data/indice_caba.sqlite`.
 
-## 2. Clasificación pendiente (262 EANs sin `coicop_subclase`)
+## 1. Automatizaciones — confirmadas funcionando (con el fix de arriba)
+
+Los 4 workflows ya están commiteados en `.github/workflows/` y no requieren
+corrida manual salvo para forzar algo fuera de fecha:
+
+- **`ingesta_diaria.yml`**: todos los días 04:00 ART (07:00 UTC). Junta los
+  precios reales del SEPA.
+- **`calcular_indice_mensual.yml`**: día 2 de cada mes. Calcula el mes que
+  acaba de cerrar (ej. 2/08 calcula julio con precios reales del scraper).
+- **`actualizar_series_oficiales.yml`**: día 16 de cada mes, 09:00 UTC
+  (~06:00 ART). Trae las series INDEC/GCBA nuevas.
+- **`recalcular_sintetico.yml`**: manual únicamente (`workflow_dispatch`).
+  Se dispara a mano desde la pestaña Actions cuando el INDEC publique un
+  mes que hoy está estimado.
+
+Corridas registradas hasta el 14–17/07: ingesta diaria OK (scheduled),
+cálculo de índice mensual corrido 3 veces a mano el 14/07 (2 OK, 1 falló —
+revisar el log de esa corrida si hace falta certeza, aunque la siguiente
+salió bien), recálculo sintético abr-may-jun OK el 14/07 12:45 PM. Con el
+bug de arriba sin corregir todavía en esas corridas, conviene no asumir que
+lo commiteado ese día refleja los datos reales hasta re-correrlas.
+
+## 2. INDEC todavía no publicó junio en la API de series
+
+**Estado: bloqueado, no accionable hoy.**
+
+Último dato disponible en la API de series oficiales: 2026-05. Volver a
+correr `python actualizar_series_oficiales.py` (o esperar la corrida
+automática del día 16) en unos días.
+
+Cuando julio cierre (~14/08): redefinir `config.PERIODO_BASE` con datos
+reales, no antes — ver el punto 1 de la versión anterior de este documento
+para el detalle del procedimiento (`sembrar_desarrollo.py` +
+`calcular_indice_mensual.py`, verificar `origen_datos = "real"` en
+`/comparativo/evolucion/general`).
+
+## 3. Clasificación pendiente — 208 EANs ambiguos
 
 **Estado: no bloqueante, sigue pendiente de tiempo humano.**
 
-`data/clasificacion_pendiente.csv` (801 filas totales) tiene 262 filas sin
-`coicop_subclase` completado:
-- 208 ambiguos reales (necesitan criterio humano — no hay fuente pública
-  EAN→COICOP, ver `generar_lista_clasificacion.py`).
-- 54 ya marcados como no-alimento (no rompen el pipeline; `autoclasificar_resto.py`
-  y `econometria.py` los ignoran correctamente).
-
-Flujo para seguir clasificando (sin código nuevo, ya existe):
+`data/clasificacion_pendiente.csv` tiene 208 EANs que necesitan criterio
+humano (no hay fuente pública EAN→COICOP). Seguir con
+`clasificar_interactivo.py` cuando haya tiempo:
 
 ```bash
-python generar_lista_clasificacion.py   # refresca la lista con los EANs más relevantes del último dump
-python clasificar_interactivo.py        # clasifica desde la terminal (reanudable, salta lo ya hecho)
-python actualizar_diccionario.py        # vuelca lo confirmado a data/diccionario_coicop.csv
+python generar_lista_clasificacion.py
+python clasificar_interactivo.py
+python actualizar_diccionario.py
 ```
 
-## 3. Tamaño del sqlite en Git LFS
+## 4. Tamaño del sqlite en Git LFS
 
 **Estado: a monitorear, sin acción todavía.**
 
-`data/indice_caba.sqlite` se versiona vía Git LFS (`.gitattributes`) y crece
-~170MB/semana según lo reportado. Se agregó `monitorear_tamano_lfs.py` —
-corrida manual (o desde una Action si se quiere automatizar más adelante)
-que imprime el tamaño actual del archivo y el historial de tamaños en LFS
-(`git lfs ls-files -s`), con aviso si supera un umbral configurable.
+Seguir corriendo `monitorear_tamano_lfs.py` de tanto en tanto. Si el
+crecimiento (~170MB/semana reportado) se mantiene, evaluar migrar
+`DATABASE_URL` a Postgres (ya soportado, es solo variable de entorno) o
+podar historial de LFS.
 
-Uso:
-```bash
-python monitorear_tamano_lfs.py
-```
+## 5. Deploy en Railway — todavía no probado
 
-Si el crecimiento se mantiene, las dos salidas más razonables a evaluar más
-adelante (no decididas todavía, requieren tu criterio sobre presupuesto/cuota
-de LFS):
-- Migrar `DATABASE_URL` a Postgres (ya soportado por `config.py` — el switch
-  es solo variable de entorno) y dejar el sqlite solo para desarrollo local.
-- Podar historial de LFS (`git lfs prune`) si lo que crece es el historial
-  de versiones y no el archivo en sí.
+**Estado: pendiente, ahora más importante por el bug del punto 0.**
+
+Falta hacer el deploy en sí y confirmar que la API levante con datos
+reales (no una base vacía). Con el fix de `config.DATA_DIR` aplicado, el
+`nixpacks.toml` (que instala `git-lfs` y corre `git lfs pull` antes de
+`pip install`) debería dejar `data/indice_caba.sqlite` real en
+`<repo>/data/`, que es donde el `config.py` corregido ahora sí busca la
+base. Antes de este fix, un deploy fresco habría arrancado con la base
+vacía sin ningún error visible.

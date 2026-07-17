@@ -1,14 +1,4 @@
-name: Actualizar series oficiales (INDEC + GCBA)
-
-# Refresca las series de comparación (INDEC Alimentos GBA, INDEC Nivel
-# General Nacional, aperturas por rubro, y GCBA Alimentos CABA) sin tocar
-# precios ni sintéticos. Es lo que alimenta las pestañas "Evolución
-# general" y "Evolución por rubro" del dashboard (/dashboard).
-#
-# - Automático: el día 16 de cada mes a las 09:00 UTC (~06:00 ART), con
-#   margen sobre la fecha de publicación del INDEC (día 14) y del GCBA.
-# - Manual (workflow_dispatch): para forzar un refresco fuera de fecha,
-#   ej. si una corrida automática falló por la caída de la fuente.
+﻿name: Actualizar series oficiales (INDEC + GCBA)
 
 on:
   schedule:
@@ -26,6 +16,8 @@ jobs:
   actualizar:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,7 +35,8 @@ jobs:
       - name: Actualizar series oficiales
         run: python actualizar_series_oficiales.py
 
-      - name: Commitear base de datos actualizada
+      - name: Commitear base de datos actualizada (solo si NO hay Postgres)
+        if: ${{ vars.USANDO_POSTGRES != 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

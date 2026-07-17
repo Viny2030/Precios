@@ -1,11 +1,4 @@
-name: Recalcular sintético abril-mayo-junio
-
-# Manual únicamente. Usar cuando el INDEC publique el dato real de un mes
-# que hoy está estimado (ej. junio se publica ~14/07) — re-corre
-# sembrar_desarrollo.py (que reemplaza la estimación por el dato real de
-# variación INDEC) y recalcula los índices de abril/mayo/junio.
-# No toca julio en adelante (eso vive en registro_precios con cadena real,
-# fuera del rango de fechas que borra sembrar_desarrollo.py).
+﻿name: Recalcular sintetico abril-mayo-junio
 
 on:
   workflow_dispatch: {}
@@ -17,6 +10,8 @@ jobs:
   recalcular:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,10 +26,10 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Re-sembrar sintético (INDEC real donde ya esté publicado)
+      - name: Re-sembrar sintetico (INDEC real donde ya este publicado)
         run: python sembrar_desarrollo.py
 
-      - name: Recalcular índices abril/mayo/junio
+      - name: Recalcular indices abril/mayo/junio
         run: |
           python calcular_indice_mensual.py 2026-04
           python calcular_indice_mensual.py 2026-05
@@ -44,7 +39,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/indice_caba.sqlite data/diccionario_coicop.csv
+          if [ "${{ vars.USANDO_POSTGRES }}" = "true" ]; then
+            git add data/diccionario_coicop.csv
+          else
+            git add data/indice_caba.sqlite data/diccionario_coicop.csv
+          fi
           if git diff --cached --quiet; then
             echo "Sin cambios."
           else

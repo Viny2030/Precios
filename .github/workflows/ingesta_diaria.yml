@@ -1,4 +1,4 @@
-﻿name: Ingesta diaria SEPA
+name: Ingesta diaria SEPA
 
 on:
   schedule:
@@ -24,8 +24,6 @@ jobs:
   ingesta:
     runs-on: ubuntu-latest
     timeout-minutes: 180
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

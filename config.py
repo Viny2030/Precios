@@ -77,8 +77,18 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # --- PARÁMETROS ECONOMÉTRICOS ---
-# Período base para el cálculo del índice (Junio 2026 = 100: primer mes con datos).
-PERIODO_BASE = "2026-06"
+# Período base para el cálculo del índice.
+# CAMBIADO 2026-08-01: antes era "2026-06" (junio, 100% sintético — ver
+# sembrar_desarrollo.py). Julio 2026 es el primer mes con precios 100% reales
+# del SEPA, y como sus EAN no coinciden con los EAN inventados de junio
+# (9990000000001..21), el merge por EAN de econometria.indice_jevons_por_subclase
+# daba 0 filas al intentar calcular julio contra esa base — no hay forma de
+# encadenar un producto real con uno sintético. Se redefine julio como la
+# nueva base real (=100); la primera variación % real (agosto vs. julio) se
+# calcula recién cuando agosto cierre (workflow calcular_indice_mensual.yml,
+# día 2 de cada mes). Los índices sintéticos de abril-mayo-junio ya
+# calculados quedan en la base como históricos, marcados como tales.
+PERIODO_BASE = "2026-07"
 
 # Divisiones COICOP relevantes (01 = Alimentos, 02 = Bebidas alcohólicas y tabaco)
 DIVISIONES_COICOP = ["01", "02"]

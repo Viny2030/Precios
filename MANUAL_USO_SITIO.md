@@ -48,7 +48,29 @@ de la canasta (`/rubros`). Para ese rubro puntual se muestra:
 La selección de rubro y la pestaña activa quedan guardadas en el navegador
 (no hace falta volver a elegirlas cada vez que se recarga la página).
 
-## 4. Cómo leer los badges de origen de datos
+## 4. La pestaña "Canasta nueva vs. vieja"
+
+Pestaña explicativa (no depende de un período puntual) sobre la diferencia
+metodológica entre la canasta que usa este sitio (**ENGHo 2017-2018**, "nueva")
+y la que sigue usando el IPC oficial del INDEC (**ENGHo 2004-2005**, "vieja",
+vigente porque el empalme anunciado para enero 2026 fue suspendido por el
+Gobierno en febrero 2026 y sigue sin fecha). Incluye:
+
+- Línea de tiempo del intento de cambio de canasta.
+- Tabla de ponderación por división (vieja vs. nueva) a nivel IPC Nacional,
+  con foco en cuánto pierde peso Alimentos y bebidas no alcohólicas (26,9% →
+  22,7%) y cuánto ganan Vivienda/tarifas, Transporte y Comunicaciones.
+- Estimaciones privadas (Equilibra, González-Rozada) de cuánto cambiaría la
+  inflación medida con la canasta nueva.
+- Tabla dinámica (vía `/rubros`) de la canasta propia del sitio: ponderación
+  real de cada subclase COICOP de Alimentos y Bebidas que usa el cálculo.
+
+Esta pestaña explica por qué las diferencias (`Dif. pp`) que se ven en las
+otras dos pestañas contra INDEC no son solo por precios: parte es que se está
+comparando una canasta nueva (este sitio) contra una serie oficial que todavía
+pesa los rubros con la canasta vieja.
+
+## 5. Cómo leer los badges de origen de datos
 
 | Badge | Significado |
 |---|---|
@@ -56,7 +78,7 @@ La selección de rubro y la pestaña activa quedan guardadas en el navegador
 | Sintético | Calculado con una estimación de referencia (solo meses de arranque, abril–junio 2026, antes de tener suficiente historial real). |
 | Sin datos | Todavía no hay índice calculado para ese período/rubro. |
 
-## 5. API REST (para uso programático)
+## 6. API REST (para uso programático)
 
 Documentación interactiva (Swagger): `<url-del-deploy>/docs`.
 
@@ -72,7 +94,7 @@ Documentación interactiva (Swagger): `<url-del-deploy>/docs`.
 | `GET /comparativo/{periodo}/rubros` | Comparativo por rubro (propio vs. INDEC aperturas GBA) de un mes. |
 | `GET /comparativo/evolucion/rubro/{coicop_subclase}` | Igual que el anterior pero para todos los meses de un rubro — alimenta la pestaña "Evolución por rubro". |
 
-## 6. Alcance y limitaciones (léase antes de citar los datos)
+## 7. Alcance y limitaciones (léase antes de citar los datos)
 
 - El índice es una construcción propia (nowcasting), no la medición oficial
   del INDEC ni la reemplaza.

@@ -1,7 +1,30 @@
 # Estado de pendientes (julio 2026)
 
-Actualizado 2026-07-17 tras revisión de código y confirmación del estado de
-las 4 automatizaciones en GitHub Actions.
+Actualizado 2026-08-01 — decisión de metodología sobre el período base tras
+la primera corrida real de `calcular_indice_mensual.py 2026-07`.
+
+## -1. `PERIODO_BASE` redefinido a julio 2026 (primer mes real)
+
+**Estado: aplicado.**
+
+Al correr `python calcular_indice_mensual.py 2026-07` (con `PERIODO_BASE =
+"2026-06"` todavía) el cálculo dio "Sin índices elementales calculados". El
+mensaje de log apuntaba al diccionario COICOP, pero la causa real es otra:
+junio 2026 es 100% sintético (`sembrar_desarrollo.py`, 21 EAN inventados
+`9990000000001`..`21`), y julio es 100% real (SEPA) — como el merge de
+`econometria.indice_jevons_por_subclase` es por EAN exacto, y ningún EAN
+sintético existe en el mundo real, el cruce entre julio y esa base daba 0
+filas antes incluso de mirar el diccionario. No era arreglable cargando más
+EANs en `diccionario_coicop.csv`.
+
+Decisión: julio 2026 pasa a ser la base real (`config.PERIODO_BASE =
+"2026-07"`, config.py). No hay ningún mes real anterior contra el cual
+comparar julio — julio ES el primer dato real, no un dato para comparar
+hacia atrás. La primera variación % real (agosto vs. julio) va a salir sola
+el 2/09 con `calcular_indice_mensual.yml`. Los índices sintéticos de
+abril-mayo-junio ya calculados (contra la base anterior) quedan en
+`indice_calculado` como históricos, marcados `sintetico_dev` en
+`origen_datos` — no se borran ni se recalculan.
 
 ## 0. BUG CRÍTICO encontrado y corregido — `config.DATA_DIR` apuntaba fuera del repo
 

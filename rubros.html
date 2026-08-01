@@ -97,6 +97,37 @@
     border: 1px dashed #d5d8dd; border-radius: 10px; margin-bottom: 22px; }
   .tab-panel[hidden] { display: none; }
 
+  /* ── Pestaña: Canasta nueva vs. vieja ──────────────────────────────────── */
+  .metod-bloque {
+    background: #fff; border: 1px solid #e4dbf7; border-radius: 10px;
+    padding: 16px 18px; margin-bottom: 16px;
+  }
+  .metod-bloque h2 { font-size: 14.5px; margin: 0 0 8px; color: var(--col-violeta-osc); }
+  .metod-bloque h3 { font-size: 13px; margin: 14px 0 6px; color: #444; }
+  .metod-bloque p { font-size: 12.5px; line-height: 1.6; color: #444; margin: 0 0 10px; }
+  .metod-bloque p:last-child { margin-bottom: 0; }
+  .metod-bloque ul { font-size: 12.5px; line-height: 1.6; color: #444; margin: 0 0 10px; padding-left: 20px; }
+  .metod-timeline { list-style: none; padding: 0; margin: 0 0 4px; }
+  .metod-timeline li {
+    font-size: 12.5px; color: #444; padding: 6px 0 6px 16px;
+    border-left: 2px solid #e4dbf7; margin-left: 4px; position: relative;
+  }
+  .metod-timeline li::before {
+    content: ''; position: absolute; left: -5px; top: 11px;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--col-violeta-claro);
+  }
+  .metod-timeline li strong { color: #2a1350; }
+  table.tabla-ponderaciones { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.tabla-ponderaciones th, table.tabla-ponderaciones td { padding: 7px 10px; text-align: right; border-bottom: 1px solid #eef0f3; }
+  table.tabla-ponderaciones th:first-child, table.tabla-ponderaciones td:first-child { text-align: left; }
+  table.tabla-ponderaciones th { background: #f1eafd; color: #444; font-weight: 600; }
+  table.tabla-ponderaciones tr.destacada td { background: var(--bg-propio); font-weight: 700; color: var(--col-violeta-osc); }
+  .subida { color: var(--pos); font-weight: 600; }
+  .bajada { color: var(--neg); font-weight: 600; }
+  .fuentes-metod { font-size: 11.5px; color: #888; line-height: 1.7; }
+  .fuentes-metod a { color: var(--col-propio); }
+  .badge-estado { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; font-weight: 600; background: #fdeee0; color: #b4590b; }
+
   /* ── Pie: aviso legal, autor, donación ─────────────────────────────────── */
   .pie {
     margin-top: 28px; padding-top: 22px; border-top: 3px solid var(--col-violeta-claro);
@@ -137,6 +168,7 @@
   <div class="tabs">
     <button class="tab-btn activa" data-tab="general">Evolución general</button>
     <button class="tab-btn" data-tab="rubro">Evolución por rubro</button>
+    <button class="tab-btn" data-tab="canasta">Canasta nueva vs. vieja</button>
   </div>
 
   <div id="estado">Cargando…</div>
@@ -224,6 +256,108 @@
     </table>
     </div>
     <div id="vacio-rubro" class="vacio" style="display:none">Todavía no hay índice calculado para este rubro.</div>
+  </section>
+
+  <!-- ── Pestaña: Canasta nueva vs. vieja ── -->
+  <section id="tab-canasta" class="tab-panel" hidden>
+
+    <div class="metod-bloque">
+      <h2>¿Por qué "canasta nueva" y "canasta vieja"?</h2>
+      <p>El índice propio de este sitio se calcula con la <strong>Nueva Canasta de Consumo (ENGHo 2017-2018)</strong>
+      — es decir, con los hábitos de gasto relevados en la Encuesta Nacional de Gastos de los Hogares más reciente.
+      El INDEC, en cambio, sigue publicando su IPC oficial con la canasta de la <strong>ENGHo 2004-2005</strong>
+      (más de 20 años de antigüedad): esa es la "canasta vieja". El INDEC anunció el reemplazo oficialmente el
+      14/10/2025, con entrada en vigencia prevista para enero 2026 — pero el Gobierno lo suspendió en febrero 2026
+      y, a la fecha, sigue sin fecha definida. <span class="badge-estado">Empalme oficial: pospuesto, sin fecha</span></p>
+      <p>Esto importa para leer las tablas de las otras pestañas: cuando este sitio compara su índice propio contra
+      "INDEC GBA Alimentos" o "INDEC Nivel General Nacional", está comparando una canasta <em>nueva</em> contra una
+      serie oficial que todavía pesa los rubros con la canasta <em>vieja</em>. Parte de cualquier diferencia (dif. pp)
+      que se vea ahí puede deberse a esto, no solo a que hayan subido precios distintos.</p>
+    </div>
+
+    <div class="metod-bloque">
+      <h3>Línea de tiempo del cambio de canasta (INDEC)</h3>
+      <ul class="metod-timeline">
+        <li><strong>2004-2005</strong> — ENGHo que releva los hábitos de consumo todavía vigentes en el IPC oficial actual.</li>
+        <li><strong>2017-2018</strong> — INDEC releva la nueva ENGHo (~45.000 hogares), con patrones de consumo mucho más actuales (incluye, por ejemplo, streaming o café en cápsulas, inexistentes en 2004).</li>
+        <li><strong>14/10/2025</strong> — INDEC anuncia oficialmente el nuevo IPC basado en ENGHo 2017-2018, con difusión prevista a partir del dato de enero 2026.</li>
+        <li><strong>Febrero 2026</strong> — El Gobierno suspende la implementación (coincide con la renuncia del director del INDEC, Marco Lavagna). El ministro Caputo declara que "no hay una fecha exacta" para retomarla.</li>
+        <li><strong>Julio 2026 (hoy)</strong> — El IPC oficial sigue midiéndose con la canasta 2004-2005. Este sitio ya usa la canasta 2017-2018 en su propio índice.</li>
+      </ul>
+    </div>
+
+    <div class="metod-bloque">
+      <h3>Ponderación por división — vieja vs. nueva (IPC Nacional, INDEC)</h3>
+      <p>Peso de cada división de consumo sobre el índice general. Fuente: gacetilla INDEC 14/10/2025 y cobertura
+      periodística citada abajo. La división que le interesa a este sitio es "Alimentos y bebidas no alcohólicas".</p>
+      <div class="tabla-scroll">
+      <table class="tabla-ponderaciones">
+        <thead>
+          <tr><th>División</th><th>Vieja (ENGHo 2004-05, vigente)</th><th>Nueva (ENGHo 2017-18, pospuesta)</th><th>Diferencia</th></tr>
+        </thead>
+        <tbody>
+          <tr class="destacada">
+            <td>Alimentos y bebidas no alcohólicas</td><td>26,9%</td><td>22,7%</td><td class="bajada">−4,2 pp</td>
+          </tr>
+          <tr><td>Vivienda, agua, electricidad, gas y otros combustibles</td><td>9,4%</td><td>14,5%</td><td class="subida">+5,1 pp</td></tr>
+          <tr><td>Transporte</td><td>11,0%</td><td>14,3%</td><td class="subida">+3,3 pp</td></tr>
+          <tr><td>Comunicaciones</td><td>2,8%</td><td>5,1%</td><td class="subida">+2,3 pp</td></tr>
+          <tr><td>Prendas de vestir y calzado</td><td>9,9%</td><td>6,8%</td><td class="bajada">−3,1 pp</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p style="margin-top:10px">En criollo: en la canasta vieja, alimentos pesaba más que cualquier otro rubro — un
+      salto en el precio de la carne o la verdura movía el índice general mucho más que un aumento de tarifas. Con la
+      canasta nueva, alimentos pierde peso relativo y vivienda/tarifas, transporte y comunicaciones ganan — reflejando
+      que los hogares de 2017-18 gastan proporcionalmente menos en comida y más en servicios que los de 2004-05 (la
+      estructura del gasto en alimentos y bebidas cayó ~24% entre ambas encuestas). Además, la nueva canasta pasa de
+      12 a 13 divisiones (estándar COICOP 2018) y de ~320.000 a ~500.000 precios relevados por mes.</p>
+    </div>
+
+    <div class="metod-bloque">
+      <h3>¿Cuánto cambiaría la inflación medida?</h3>
+      <p>Estimaciones privadas (no oficiales, el INDEC no publicó una serie paralela) que recalculan meses recientes
+      con los ponderadores de la ENGHo 2017-18:</p>
+      <ul>
+        <li>Consultora Equilibra: la inflación de junio 2026 habría sido <strong>2,1%</strong> con la canasta nueva
+        vs. <strong>1,9%</strong> informado por el INDEC; acumulado primer semestre 2026: <strong>18,0%</strong> vs.
+        <strong>16,8%</strong> oficial.</li>
+        <li>Para 2025 completo: Equilibra estimó <strong>32,1%</strong> (vs. 31,5% oficial, +0,6 pp); el economista
+        Martín González-Rozada estimó <strong>33,6%</strong> (vs. 31,5% oficial).</li>
+        <li>Acumulado de la gestión Milei hasta esa fecha: <strong>194,8%</strong> con canasta nueva vs.
+        <strong>186,2%</strong> con la vieja (8,6 pp de diferencia) — el desvío se agranda con los meses porque la
+        nueva canasta le da más peso a rubros como tarifas y alquileres, que subieron fuerte por la actualización
+        tarifaria.</li>
+      </ul>
+      <p>Conclusión de varios economistas consultados en estas notas: mes a mes la diferencia es chica (décimas), pero
+      se acumula — no es un cambio cosmético para series largas.</p>
+    </div>
+
+    <div class="metod-bloque">
+      <h3>La canasta propia de este sitio (Alimentos y Bebidas, ENGHo 2017-18)</h3>
+      <p>A diferencia de la comparación de arriba (a nivel de las 12/13 divisiones completas del IPC), esta tabla es
+      la canasta real que usa el cálculo de este sitio para las divisiones 01 y 02 (Alimentos y bebidas, y Bebidas
+      alcohólicas y tabaco), subclase por subclase COICOP, con su ponderación dentro de esas divisiones para CABA.</p>
+      <div class="tabla-scroll">
+      <table id="tabla-canasta-propia" class="tabla-ponderaciones" style="display:none">
+        <thead><tr><th>Subclase COICOP</th><th>Descripción</th><th>Ponderación CABA</th></tr></thead>
+        <tbody id="filas-canasta-propia"></tbody>
+      </table>
+      </div>
+      <div id="vacio-canasta-propia" class="vacio" style="display:none">Todavía no hay ponderaciones cargadas en <code>ponderaciones_coicop</code>.</div>
+    </div>
+
+    <div class="metod-bloque">
+      <h3>Fuentes</h3>
+      <div class="fuentes-metod">
+        INDEC, gacetilla 14/10/2025 (anuncio del nuevo IPC) · Chequeado, "El INDEC no actualizó la canasta de bienes
+        y servicios para medir la inflación" (11/02/2026) · Infobae, "La inflación fue de 1,9% en junio: cuál hubiera
+        sido el dato con el índice actualizado que el Gobierno postergó" (15/07/2026) · La Nación, "Cómo será el IPC
+        con una canasta de consumo más cercana a la realidad" (03/06/2024). Los números de este bloque son estimaciones
+        de consultoras privadas y economistas, no series oficiales del INDEC.
+      </div>
+    </div>
+
   </section>
 
   <!-- ── Pie: aviso legal, autor, donación ── -->
@@ -430,6 +564,34 @@
     }
   }
 
+  // ── Canasta nueva vs. vieja: tabla de la canasta propia (ENGHo 2017-18) ──
+  async function cargarCanastaPropia() {
+    const { datos } = await traerJSON('/rubros');
+    const tabla = $('tabla-canasta-propia');
+    const vacio = $('vacio-canasta-propia');
+    const filas = $('filas-canasta-propia');
+    filas.innerHTML = '';
+
+    if (!datos.length) {
+      tabla.style.display = 'none';
+      vacio.style.display = 'block';
+      return;
+    }
+    vacio.style.display = 'none';
+    tabla.style.display = '';
+
+    const ordenados = [...datos].sort((a, b) => a.coicop_subclase.localeCompare(b.coicop_subclase));
+    for (const r of ordenados) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${r.coicop_subclase}</td>
+        <td>${r.descripcion || '<span class="muted">sin descripción</span>'}</td>
+        <td>${r.ponderacion_caba === null || r.ponderacion_caba === undefined ? '<span class="muted">—</span>' : (r.ponderacion_caba * 100).toFixed(2) + '%'}</td>
+      `;
+      filas.appendChild(tr);
+    }
+  }
+
   // ── Arranque ─────────────────────────────────────────────────────────────
   async function iniciar() {
     const estado = $('estado');
@@ -440,6 +602,7 @@
       await cargarEvolucionGeneral();
       await poblarSelectorRubros();
       await cargarEvolucionRubro();
+      await cargarCanastaPropia();
 
       $('selectorRubro').addEventListener('change', () => {
         cargarEvolucionRubro().catch(e => {
@@ -449,8 +612,8 @@
       });
 
       const tabGuardada = localStorage.getItem('rubros_tab_activa');
-      if (tabGuardada === 'rubro') {
-        document.querySelector('.tab-btn[data-tab="rubro"]').click();
+      if (tabGuardada === 'rubro' || tabGuardada === 'canasta') {
+        document.querySelector(`.tab-btn[data-tab="${tabGuardada}"]`).click();
       }
 
       estado.textContent = '';

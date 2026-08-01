@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 import config
+from transform import _canon_ean
 
 logger = logging.getLogger("econometria")
 
@@ -94,7 +95,8 @@ def indice_jevons_por_subclase(
     tienen precio tanto en el período actual como en el base.
 
     precios_periodo / precios_base: salida de precio_promedio_mensual()
-    coicop_por_ean: mapeo ean -> subclase (de transform.cargar_diccionario_coicop)
+    coicop_por_ean: mapeo ean -> subclase (de transform.cargar_diccionario_coicop),
+    con las claves ya en forma canónica (ver transform._canon_ean).
 
     Devuelve: DataFrame con columnas coicop_subclase, indice_jevons, n_variedades.
     """
@@ -106,11 +108,29 @@ def indice_jevons_por_subclase(
         on="ean", how="inner",
     )
     merged = merged[(merged["precio_prom"] > 0) & (merged["precio_base"] > 0)]
-    # EANs en la BD son BigInteger; en el diccionario COICOP son str (para
-    # preservar ceros a la izquierda). Convertimos acá para que el .map()
-    # matchee — no tocamos transform.cargar_diccionario_coicop porque otros
-    # consumidores dependen del formato str.
-    merged["coicop_subclase"] = merged["ean"].astype(str).map(coicop_por_ean)
+
+    # DIAGNÓSTICO — dejar este log un tiempo para confirmar en qué formato
+    # llega el EAN desde la BD (BigInteger limpio, float con NaN de por medio,
+    # etc.). Se puede borrar una vez confirmado que el matching funciona bien.
+    if not merged.empty:
+        logger.info(
+            f"DEBUG ean dtype={merged['ean'].dtype}, muestra={merged['ean'].head(3).tolist()}"
+        )
+
+    # EANs en la BD pueden llegar como BigInteger, float (si la columna tiene
+    # NULLs pandas los sube a float64, ej. 7798062548679.0) u otro formato.
+    # El diccionario COICOP (coicop_por_ean) tiene sus claves en forma
+    # canónica (transform._canon_ean: solo dígitos, sin ceros a la izquierda,
+    # sin ".0" de float). Antes acá se hacía un simple .astype(str), que NO
+    # es equivalente a la forma canónica cuando el EAN viene como float o con
+    # ceros a la izquierda — eso hacía que el .map() no matcheara nunca y
+    # dejaba 0 filas clasificadas, aunque el diccionario tuviera el EAN
+    # cargado. Ahora se canoniza el EAN de este lado también, igual que del
+    # lado del diccionario, para que ambos lados se comparen en el mismo
+    # formato sin importar cómo haya llegado desde la BD.
+    merged["_ean_canon"] = merged["ean"].map(_canon_ean)
+    merged["coicop_subclase"] = merged["_ean_canon"].map(coicop_por_ean)
+    merged = merged.drop(columns=["_ean_canon"])
     merged = merged.dropna(subset=["coicop_subclase"])
 
     if merged.empty:
@@ -199,7 +219,10 @@ def imputar_variacion_subgrupo(
         return df_precios
 
     df = df_precios.copy()
-    df["coicop_subclase"] = df["ean"].map(coicop_por_ean)
+    # Mismo fix que en indice_jevons_por_subclase: canonizar el EAN antes de
+    # buscarlo en el diccionario, en vez de mapear el valor crudo (que puede
+    # venir como float/BigInteger/con ceros a la izquierda y no matchear).
+    df["coicop_subclase"] = df["ean"].map(_canon_ean).map(coicop_por_ean)
 
     variacion_subgrupo = (
         df.groupby(["coicop_subclase", "semana"])[col_precio]

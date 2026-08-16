@@ -71,7 +71,14 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 DB_PATH = os.path.join(DATA_DIR, "indice_caba.sqlite")
-DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
+# FIX 2026-08-16: antes era os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}").
+# En GitHub Actions el workflow define `env: DATABASE_URL: ${{ secrets.DATABASE_URL }}`.
+# Si ese secret no está seteado en el repo, GitHub Actions igual crea la
+# variable de entorno pero con valor '' (string vacío) — la clave SÍ existe,
+# así que os.environ.get(...) devolvía '' en vez de caer al default de SQLite,
+# y create_engine('') explotaba con "Could not parse SQLAlchemy URL from
+# string ''". Con "or" tratamos '' igual que "no seteada".
+DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{DB_PATH}"
 if DATABASE_URL.startswith("postgres://"):
     # Railway/Heroku entregan el prefijo viejo; SQLAlchemy 2.x quiere postgresql://
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)

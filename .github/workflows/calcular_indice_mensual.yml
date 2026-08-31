@@ -35,13 +35,15 @@ jobs:
         with:
           lfs: true
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Instalar dependencias
-        run: pip install -r requirements.txt
+      # FIX 2026-08-31: ver mismo fix en ingesta_diaria.yml — setup-python
+      # falla en self-hosted Windows por permisos de Registro, asi que se usa
+      # el Python ya instalado en la PC en vez de instalar uno nuevo.
+      - name: Preparar entorno Python (venv local del runner)
+        shell: bash
+        run: |
+          python -m venv .venv-ci
+          .venv-ci/Scripts/python.exe -m pip install --upgrade pip
+          .venv-ci/Scripts/pip.exe install -r requirements.txt
 
       - name: Determinar periodo a calcular
         id: periodo
@@ -64,7 +66,8 @@ jobs:
           echo "valor=$PERIODO" >> "$GITHUB_OUTPUT"
 
       - name: Calcular indice del periodo
-        run: python calcular_indice_mensual.py "${{ steps.periodo.outputs.valor }}"
+        shell: bash
+        run: .venv-ci/Scripts/python.exe calcular_indice_mensual.py "${{ steps.periodo.outputs.valor }}"
 
       - name: Commitear indice actualizado (solo si NO hay Postgres)
         if: ${{ vars.USANDO_POSTGRES != 'true' }}

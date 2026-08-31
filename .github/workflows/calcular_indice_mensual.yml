@@ -46,7 +46,14 @@ jobs:
             PERIODO="${{ github.event.inputs.periodo }}"
             echo "Periodo forzado manualmente: $PERIODO"
           else
-            PERIODO=$(date -u -d "yesterday" +%Y-%m)
+            # FIX 2026-08-31: "date -d yesterday" solo da el mes anterior si
+            # esto corre el dia 1. El cron dispara el dia 2 ("0 8 2 * *"), asi
+            # que "yesterday" caia en el dia 1 del MISMO mes (ej. 2/set ->
+            # 1/set -> "2026-09" en vez de "2026-08"). Se calcula en cambio
+            # restando 1 dia al primer dia del mes actual, que siempre cae en
+            # el ultimo dia del mes anterior sin importar que dia del mes
+            # corra el job.
+            PERIODO=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
             echo "Periodo automatico (mes anterior a hoy): $PERIODO"
           fi
           echo "valor=$PERIODO" >> "$GITHUB_OUTPUT"

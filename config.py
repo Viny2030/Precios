@@ -16,8 +16,18 @@ import os
 # el listado de recursos vía su API (no descargar los archivos en sí).
 # ver ingesta.py para cómo se maneja esto en la práctica (intento automático +
 # fallback a carga manual).
+#
+# FIX 2026-08-31: el slug del dataset cambió en el catálogo de datos.gob.ar.
+# El valor viejo "produccion-precios-claros---base-sepa" (verificado 2026-07-02)
+# devuelve 404 "No encontrado" en package_show desde algún momento entre el
+# 13/07 y el 03/08 (metadata_modified del dataset = 2026-08-03). Esto rompía
+# TODA ingesta desde el paso 1 (ni siquiera llegaba a toparse con el WAF):
+# _descargar_zip_dia() logueaba "No se pudo consultar el catálogo CKAN" y
+# devolvía None todos los días, sin excepción — por eso no había rastro de
+# error visible en las corridas de GitHub Actions. Confirmado el slug actual
+# vía package_search: "precios-claros-base-sepa" (verificado 2026-08-31).
 CKAN_API_SEPA = "https://datos.gob.ar/api/3/action/package_show"
-CKAN_DATASET_SEPA = "produccion-precios-claros---base-sepa"
+CKAN_DATASET_SEPA = "precios-claros-base-sepa"
 
 # Días de la semana tal como los nombra el dataset (recursos "Lunes".."Domingo").
 DIAS_SEPA = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"]

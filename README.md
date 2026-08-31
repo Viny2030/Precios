@@ -4,6 +4,8 @@ Este sistema automatizado realiza el *Nowcasting* y cálculo mensual del Índice
 
 El motor está diseñado bajo estrictas pautas metodológicas utilizando la **Nueva Canasta de Consumo (ENGHo 2017-2018)** y la clasificación internacional **COICOP**, adelantándose al empalme oficial del INDEC.
 
+📄 **Metodología completa (citable):** ver [`METODOLOGIA.md`](METODOLOGIA.md) — fuentes, fórmulas, período base, cobertura de la canasta y limitaciones conocidas, en un solo documento.
+
 ## ⚖️ Marco Legal y Transparencia
 De acuerdo con la **Ley N° 27.275 de Derecho de Acceso a la Información Pública**, este desarrollo se nutre exclusivamente de fuentes de información oficiales, transparentes y en formatos abiertos provistas por el Ministerio de Economía de la Nación y el Portal BA Data. No utiliza datos sintéticos ni simulados.
 

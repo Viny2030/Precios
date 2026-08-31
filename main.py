@@ -19,6 +19,7 @@ from datetime import date
 
 import pandas as pd
 
+import alertas
 import config
 import ingesta
 import transform
@@ -98,6 +99,7 @@ def ejecutar_pipeline_diario(dia: str | None = None):
     if df_crudo.empty:
         logger.warning("Sin datos de CABA para hoy — nada para procesar. Ver ingesta.py "
                         "si esto se repite varios días seguidos (probable bloqueo del WAF).")
+        alertas.alertar_ingesta_vacia(dia, motivo="procesar_dia_sepa() devolvió 0 filas")
         return
 
     logger.info("2/3 — Transformación")
@@ -109,6 +111,11 @@ def ejecutar_pipeline_diario(dia: str | None = None):
     nuevos, insertados = persistir_registros(df_alimentos)
     logger.info(f"Listo — {nuevos} productos nuevos, {insertados} precios insertados "
                 f"(de {len(df_alimentos)} filas clasificadas en Alimentos/Bebidas)")
+
+    if insertados == 0:
+        alertas.alertar_ingesta_vacia(dia, motivo="0 precios insertados (llegaron filas pero ninguna con precio/fecha válidos)")
+    else:
+        alertas.marcar_ingesta_ok()
 
 
 if __name__ == "__main__":

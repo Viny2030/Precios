@@ -48,6 +48,27 @@ El log de cada corrida queda en `logs/pipeline_YYYY-MM-DD.log`.
    === Fin pipeline diario 2026-07-04 (exit code 0) ===
    ```
 
+## Alerta cuando un día viene vacío (agregado 2026-08-31)
+
+Después de descubrir que la ingesta estuvo fallando en silencio 7 semanas
+seguidas (bug de slug de CKAN — ver `DIAGNOSTICO_INDICE_AGOSTO_2026-08-31.md`),
+`main.py` ahora avisa cada vez que una corrida trae 0 registros, en vez de
+solo loguearlo:
+
+1. **Siempre** queda una línea en `logs/alertas_ingesta.log`, con fecha,
+   día y motivo — revisala de vez en cuando o abrila con
+   `type logs\alertas_ingesta.log` (PowerShell: `Get-Content`).
+2. **Opcional pero recomendado**: instalá `pip install win10toast` (con el
+   venv activado) para que además salte una notificación nativa de
+   Windows apenas termina la corrida. Si no lo instalás, el pipeline
+   sigue funcionando igual — solo te quedás sin el aviso visual, con el
+   log como respaldo.
+
+Si ves 2 o más corridas vacías seguidas, el título de la alerta cambia a
+"ALERTA: Ingesta SEPA vacia N dias seguidos" — es la señal de que no es
+un día suelto (raro, pasa a veces los domingos) sino algo roto (WAF
+bloqueando de forma persistente, o el dataset de CKAN cambiado otra vez).
+
 ## Setup inicial: correr los 6 días disponibles ahora
 
 CKAN sobrescribe los recursos semanalmente. Los 6-7 días que están hoy

@@ -38,47 +38,54 @@ jobs:
       # FIX 2026-08-31: ver mismo fix en ingesta_diaria.yml — setup-python
       # falla en self-hosted Windows por permisos de Registro, asi que se usa
       # el Python ya instalado en la PC en vez de instalar uno nuevo.
+      #
+      # FIX 2026-08-31 (bis): "shell: bash" en esta PC resuelve al bash de
+      # WSL, no al de Git for Windows -- WSL bash rompe las rutas de Windows
+      # con backslash (las borra), por eso "shell: powershell" en todos los
+      # pasos custom de aca en mas.
       - name: Preparar entorno Python (venv local del runner)
-        shell: bash
+        shell: powershell
         run: |
           python -m venv .venv-ci
-          .venv-ci/Scripts/python.exe -m pip install --upgrade pip
-          .venv-ci/Scripts/pip.exe install -r requirements.txt
+          .venv-ci\Scripts\python.exe -m pip install --upgrade pip
+          .venv-ci\Scripts\pip.exe install -r requirements.txt
 
       - name: Determinar periodo a calcular
         id: periodo
-        shell: bash
+        shell: powershell
         run: |
-          if [ -n "${{ github.event.inputs.periodo }}" ]; then
-            PERIODO="${{ github.event.inputs.periodo }}"
-            echo "Periodo forzado manualmente: $PERIODO"
-          else
-            # FIX 2026-08-31: "date -d yesterday" solo da el mes anterior si
-            # esto corre el dia 1. El cron dispara el dia 2 ("0 8 2 * *"), asi
-            # que "yesterday" caia en el dia 1 del MISMO mes (ej. 2/set ->
-            # 1/set -> "2026-09" en vez de "2026-08"). Se calcula en cambio
-            # restando 1 dia al primer dia del mes actual, que siempre cae en
-            # el ultimo dia del mes anterior sin importar que dia del mes
-            # corra el job.
-            PERIODO=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
-            echo "Periodo automatico (mes anterior a hoy): $PERIODO"
-          fi
-          echo "valor=$PERIODO" >> "$GITHUB_OUTPUT"
+          if ("${{ github.event.inputs.periodo }}") {
+            $periodo = "${{ github.event.inputs.periodo }}"
+            Write-Host "Periodo forzado manualmente: $periodo"
+          } else {
+            # FIX 2026-08-31: el cron dispara el dia 2 de cada mes. El
+            # periodo automatico es siempre el mes calendario anterior,
+            # calculado como el ultimo dia del mes anterior al de hoy (en
+            # UTC), sin importar que dia del mes corra este job.
+            $hoy = (Get-Date).ToUniversalTime()
+            $primerDiaMesActual = Get-Date -Year $hoy.Year -Month $hoy.Month -Day 1
+            $ultimoDiaMesAnterior = $primerDiaMesActual.AddDays(-1)
+            $periodo = $ultimoDiaMesAnterior.ToString("yyyy-MM")
+            Write-Host "Periodo automatico (mes anterior a hoy): $periodo"
+          }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "valor=$periodo"
 
       - name: Calcular indice del periodo
-        shell: bash
-        run: .venv-ci/Scripts/python.exe calcular_indice_mensual.py "${{ steps.periodo.outputs.valor }}"
+        shell: powershell
+        run: .venv-ci\Scripts\python.exe calcular_indice_mensual.py "${{ steps.periodo.outputs.valor }}"
 
       - name: Commitear indice actualizado (solo si NO hay Postgres)
         if: ${{ vars.USANDO_POSTGRES != 'true' }}
-        shell: bash
+        shell: powershell
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/indice_caba.sqlite
-          if git diff --cached --quiet; then
-            echo "Sin cambios para commitear (sin precios reales todavia para ${{ steps.periodo.outputs.valor }}, o el calculo fallo)."
-          else
-            git commit -m "Calcular indice ${{ steps.periodo.outputs.valor }} $(date -u +%Y-%m-%d)"
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Sin cambios para commitear (sin precios reales todavia para ${{ steps.periodo.outputs.valor }}, o el calculo fallo)."
+          } else {
+            $fecha = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
+            git commit -m "Calcular indice ${{ steps.periodo.outputs.valor }} $fecha"
             git push
-          fi
+          }

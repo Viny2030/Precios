@@ -44,37 +44,44 @@ jobs:
       # (con eso se armo el .venv del proyecto), en vez de instalar nada se
       # crea un venv liviano dentro de la carpeta de trabajo del propio
       # runner, usando el Python que ya esta en el PATH de la maquina.
+      #
+      # FIX 2026-08-31 (bis): "shell: bash" en esta PC resuelve al bash de
+      # WSL, no al de Git for Windows -- WSL bash rompe las rutas de Windows
+      # con backslash (las borra), por eso "shell: powershell" en todos los
+      # pasos custom de aca en mas (evita el problema de raiz).
       - name: Preparar entorno Python (venv local del runner)
-        shell: bash
+        shell: powershell
         run: |
           python -m venv .venv-ci
-          .venv-ci/Scripts/python.exe -m pip install --upgrade pip
-          .venv-ci/Scripts/pip.exe install -r requirements.txt
+          .venv-ci\Scripts\python.exe -m pip install --upgrade pip
+          .venv-ci\Scripts\pip.exe install -r requirements.txt
 
       - name: Correr ingesta
-        shell: bash
+        shell: powershell
         run: |
-          if [ -n "${{ github.event.inputs.dias }}" ]; then
-            echo "Backfill manual de: ${{ github.event.inputs.dias }}"
-            .venv-ci/Scripts/python.exe barrer_semana.py --dias ${{ github.event.inputs.dias }}
-          else
-            echo "Corrida diaria normal (dia de hoy)"
-            .venv-ci/Scripts/python.exe main.py
-          fi
+          if ("${{ github.event.inputs.dias }}") {
+            Write-Host "Backfill manual de: ${{ github.event.inputs.dias }}"
+            .venv-ci\Scripts\python.exe barrer_semana.py --dias ${{ github.event.inputs.dias }}
+          } else {
+            Write-Host "Corrida diaria normal (dia de hoy)"
+            .venv-ci\Scripts\python.exe main.py
+          }
 
       - name: Commitear archivos versionados actualizados
-        shell: bash
+        shell: powershell
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [ "${{ vars.USANDO_POSTGRES }}" = "true" ]; then
+          if ("${{ vars.USANDO_POSTGRES }}" -eq "true") {
             git add data/diccionario_coicop.csv data/clasificacion_pendiente.csv
-          else
+          } else {
             git add data/indice_caba.sqlite data/diccionario_coicop.csv data/clasificacion_pendiente.csv
-          fi
-          if git diff --cached --quiet; then
-            echo "Sin cambios para commitear (0 precios nuevos, o WAF bloqueo la descarga hoy)."
-          else
-            git commit -m "Ingesta SEPA $(date -u +%Y-%m-%d)"
+          }
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Sin cambios para commitear (0 precios nuevos, o WAF bloqueo la descarga hoy)."
+          } else {
+            $fecha = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
+            git commit -m "Ingesta SEPA $fecha"
             git push
-          fi
+          }

@@ -29,26 +29,24 @@ jobs:
     timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # FIX 2026-08-31: ver el mismo fix en ingesta_diaria.yml — la Python de
+      # Microsoft Store falla en procesos no interactivos, asi que se usa
+      # directamente el .venv que ya existe en la carpeta del proyecto.
+      PYTHON_EXE: C:\Users\ASUS\PycharmProjects\Precios\.venv\Scripts\python.exe
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           lfs: true
 
-      # FIX 2026-08-31: ver mismo fix en ingesta_diaria.yml — setup-python
-      # falla en self-hosted Windows por permisos de Registro, asi que se usa
-      # el Python ya instalado en la PC en vez de instalar uno nuevo.
-      #
       # FIX 2026-08-31 (bis): "shell: bash" en esta PC resuelve al bash de
       # WSL, no al de Git for Windows -- WSL bash rompe las rutas de Windows
       # con backslash (las borra), por eso "shell: powershell" en todos los
       # pasos custom de aca en mas.
-      - name: Preparar entorno Python (venv local del runner)
+      - name: Instalar dependencias (usa el venv ya existente del proyecto)
         shell: powershell
         run: |
-          python -m venv .venv-ci
-          .venv-ci\Scripts\python.exe -m pip install --upgrade pip
-          .venv-ci\Scripts\pip.exe install -r requirements.txt
+          & $env:PYTHON_EXE -m pip install -r requirements.txt
 
       - name: Determinar periodo a calcular
         id: periodo
@@ -72,7 +70,7 @@ jobs:
 
       - name: Calcular indice del periodo
         shell: powershell
-        run: .venv-ci\Scripts\python.exe calcular_indice_mensual.py "${{ steps.periodo.outputs.valor }}"
+        run: '& $env:PYTHON_EXE calcular_indice_mensual.py "${{ steps.periodo.outputs.valor }}"'
 
       - name: Commitear indice actualizado (solo si NO hay Postgres)
         if: ${{ vars.USANDO_POSTGRES != 'true' }}

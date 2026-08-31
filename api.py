@@ -28,7 +28,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 
@@ -299,8 +299,17 @@ def _valor_variacion_serie(db, serie_id: str, periodo: str) -> tuple[bool, Optio
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
 
-@app.get("/", response_model=InfoSistema, tags=["info"])
+# AGREGADO 2026-08-31: la raiz "/" ahora manda directo al dashboard visual
+# (rubros.html), que es lo que espera ver un visitante que entra al dominio
+# a secas. El JSON de health check / resumen del sistema que antes vivia en
+# "/" se mudo a "/status" (mismo contenido, solo cambio la ruta).
+@app.get("/", include_in_schema=False)
 def raiz():
+    return RedirectResponse(url="/dashboard")
+
+
+@app.get("/status", response_model=InfoSistema, tags=["info"])
+def estado():
     """Health check + resumen del estado del sistema."""
     db = SessionLocal()
     try:

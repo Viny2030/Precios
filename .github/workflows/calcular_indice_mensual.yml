@@ -21,7 +21,11 @@ concurrency:
 
 jobs:
   calcular:
-    runs-on: ubuntu-latest
+    # FIX 2026-08-31: self-hosted por la misma razon que ingesta_diaria.yml
+    # (ubuntu-latest queda bloqueado por el WAF de datos.produccion.gob.ar).
+    # calcular_indice_mensual.py no descarga nada nuevo, pero corre en el
+    # mismo runner para no tener que mantener dos configuraciones distintas.
+    runs-on: self-hosted
     timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -41,6 +45,7 @@ jobs:
 
       - name: Determinar periodo a calcular
         id: periodo
+        shell: bash
         run: |
           if [ -n "${{ github.event.inputs.periodo }}" ]; then
             PERIODO="${{ github.event.inputs.periodo }}"
@@ -63,6 +68,7 @@ jobs:
 
       - name: Commitear indice actualizado (solo si NO hay Postgres)
         if: ${{ vars.USANDO_POSTGRES != 'true' }}
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -22,7 +22,14 @@ concurrency:
 
 jobs:
   ingesta:
-    runs-on: ubuntu-latest
+    # FIX 2026-08-31: ubuntu-latest (nube de GitHub) queda bloqueado por el
+    # WAF de datos.produccion.gob.ar (403 confirmado en pruebas reales, tanto
+    # desde un runner de GitHub como desde otro entorno en la nube). Desde la
+    # IP residencial de una PC normal la descarga SI funciona (confirmado
+    # 2026-08-31 corriendo main.py local: trajo datos reales del 24/08). Por
+    # eso este job corre en un runner self-hosted instalado en la PC del
+    # proyecto en vez de en la infraestructura de GitHub.
+    runs-on: self-hosted
     timeout-minutes: 180
     steps:
       - name: Checkout
@@ -39,6 +46,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Correr ingesta
+        shell: bash
         run: |
           if [ -n "${{ github.event.inputs.dias }}" ]; then
             echo "Backfill manual de: ${{ github.event.inputs.dias }}"
@@ -49,6 +57,7 @@ jobs:
           fi
 
       - name: Commitear archivos versionados actualizados
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -1,25 +1,21 @@
 """
 transform.py — Capa B (parte 1): Normalización de variedades y mapeo COICOP
-
 Dos responsabilidades:
   1. Normalizar el precio a unidad de medida homogénea (precio/kg, precio/l,
      precio/unidad) extrayendo el contenido neto del nombre del producto.
   2. Mapear cada EAN a su subclase COICOP.
-
 Sobre el mapeo COICOP — leer antes de asumir que esto es automático:
 No existe ningún portal público que publique un diccionario EAN → subclase
 COICOP descargable (a diferencia del IPC o el tipo de cambio, que sí tienen
 APIs). El propio documento de diseño original lo resuelve con un
 "diccionario de equivalencias automatizado", pero ese diccionario hay que
 construirlo — no se puede bajar de ningún lado sin inventarlo.
-
 La forma correcta de encararlo (y la única consistente con "cero datos
 sintéticos"): mantener data/diccionario_coicop.csv con pares EAN→subclase
 que se van cargando a mano a medida que se identifican productos reales.
 Los EAN sin clasificar quedan con coicop_subclase = None y no entran al
 índice hasta que alguien los clasifique — no se les asigna una subclase
 adivinada.
-
 NOTA SOBRE EANs (corregido 2026-07-03): los EAN se manejan SIEMPRE como
 string, nunca como int. Los códigos UPC/GTIN pueden traer ceros a la
 izquierda significativos (ej. "0022000006653" en el dump real del SEPA), y
@@ -28,29 +24,24 @@ inmune a ambas cosas, los dos lados (diccionario y datos) se comparan en
 forma canónica: solo dígitos, sin ceros a la izquierda (ver _canon_ean).
 """
 from __future__ import annotations
-
 import logging
 import re
 from pathlib import Path
 from typing import Optional
-
+import numpy as np
 import pandas as pd
-
 import config
 
 logger = logging.getLogger("transform")
 
 DICCIONARIO_COICOP_PATH = Path(config.DATA_DIR) / "diccionario_coicop.csv"
 
-# Patrones para extraer contenido neto del nombre del producto.
-# Cubre los formatos más comunes en Argentina: "500g", "1.5L", "250cc", "12u".
 _PATRON_CONTENIDO = re.compile(
     r"(\d+[.,]?\d*)\s*(kg|kgs|g|gr|grs|l|lt|lts|litro|litros|cc|ml|u|un|unid|unidades)\b",
     re.IGNORECASE,
 )
 
 _EQUIVALENCIAS_A_BASE = {
-    # normaliza todo a kg (peso) o l (volumen) o unidad
     "kg": ("kg", 1.0), "kgs": ("kg", 1.0),
     "g": ("kg", 0.001), "gr": ("kg", 0.001), "grs": ("kg", 0.001),
     "l": ("l", 1.0), "lt": ("l", 1.0), "lts": ("l", 1.0),
@@ -70,7 +61,7 @@ def _canon_ean(valor) -> Optional[str]:
     if valor is None or (isinstance(valor, float) and pd.isna(valor)):
         return None
     s = str(valor).strip()
-    if s.endswith(".0"):  # float serializado
+    if s.endswith(".0"):
         s = s[:-2]
     digitos = re.sub(r"\D", "", s)
     digitos = digitos.lstrip("0")
@@ -105,6 +96,12 @@ def normalizar_precios(df: pd.DataFrame) -> pd.DataFrame:
     (precio por kg/l/unidad) a partir de la columna 'nombre'.
     Filas donde no se pudo extraer el contenido quedan con
     precio_normalizado = NaN (no se inventa un valor).
+
+    AGREGADO 2026-09-01: el cálculo de precio_normalizado antes usaba
+    df.apply(..., axis=1) -- con millones de filas esto es extremadamente
+    lento (arma un objeto por fila) y dejaba el pipeline colgado sin
+    terminar nunca la Transformación. Reemplazado por una división
+    vectorizada de toda la columna de una vez.
     """
     df = df.copy()
     if "nombre" not in df.columns:
@@ -113,22 +110,18 @@ def normalizar_precios(df: pd.DataFrame) -> pd.DataFrame:
         df["unidad_medida"] = None
         df["precio_normalizado"] = None
         return df
-
     extraidos = df["nombre"].apply(extraer_contenido_neto)
     df["contenido_neto"] = extraidos.apply(lambda t: t[0])
     df["unidad_medida"] = extraidos.apply(lambda t: t[1])
-
     precio_col = "precio" if "precio" in df.columns else None
     if precio_col:
-        df["precio_normalizado"] = df.apply(
-            lambda r: (r[precio_col] / r["contenido_neto"])
-            if pd.notna(r["contenido_neto"]) and r["contenido_neto"] > 0
-            else None,
-            axis=1,
-        )
+        contenido = df["contenido_neto"]
+        condicion_valida = contenido.notna() & (contenido > 0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            precio_dividido = df[precio_col] / contenido
+        df["precio_normalizado"] = precio_dividido.where(condicion_valida)
     else:
         df["precio_normalizado"] = None
-
     sin_normalizar = df["precio_normalizado"].isna().sum()
     if sin_normalizar:
         logger.info(
@@ -155,14 +148,10 @@ def cargar_diccionario_coicop() -> dict[str, str]:
             f"El índice no va a tener productos clasificados hasta que se cargue a mano."
         )
         return {}
-
-    # dtype=str: NUNCA dejar que pandas convierta los EAN a número (pierde
-    # ceros a la izquierda y puede pasarlos a notación float).
     df = pd.read_csv(DICCIONARIO_COICOP_PATH, dtype=str)
     if df.empty:
         logger.warning(f"{DICCIONARIO_COICOP_PATH} existe pero está vacío.")
         return {}
-
     diccionario: dict[str, str] = {}
     for ean_raw, subclase in zip(df["ean"], df["coicop_subclase"]):
         ean = _canon_ean(ean_raw)
@@ -183,9 +172,7 @@ def clasificar_coicop(df: pd.DataFrame) -> pd.DataFrame:
         logger.error("No hay columna 'ean' — no se puede clasificar por COICOP")
         df["coicop_subclase"] = None
         return df
-
     df["coicop_subclase"] = df["ean"].map(lambda e: diccionario.get(_canon_ean(e)))
-
     clasificados = df["coicop_subclase"].notna().sum()
     total = len(df)
     logger.info(

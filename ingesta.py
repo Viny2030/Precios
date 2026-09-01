@@ -35,6 +35,7 @@ from __future__ import annotations
 import io
 import logging
 import re
+import time
 import unicodedata
 import zipfile
 from datetime import date, datetime, timedelta
@@ -43,6 +44,7 @@ from typing import Optional
 
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter, Retry
 
 import config
 
@@ -51,6 +53,37 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 MANUAL_DIR = Path(config.DATA_DIR) / "manual"
 MANUAL_DIR.mkdir(parents=True, exist_ok=True)
+
+# AGREGADO 2026-09-01: antes cada llamada de red usaba requests.get() suelto
+# -- un timeout, un reset de conexión o un 502/503/504 pasajero del propio
+# CKAN tiraban abajo la ingesta del día entero al primer intento, sin volver
+# a probar. Esta sesión reintenta sola (con backoff) los errores de red
+# transitorios. El 403 del WAF NO entra en esta lista a propósito: no tiene
+# sentido reintentarlo en milisegundos, se maneja aparte con su propio
+# backoff más largo en _descargar_zip_dia().
+def _sesion_con_reintentos() -> requests.Session:
+    sesion = requests.Session()
+    reintentos = Retry(
+        total=3,
+        backoff_factor=2,  # espera 2s, 4s, 8s entre intentos
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods=["GET"],
+    )
+    adaptador = HTTPAdapter(max_retries=reintentos)
+    sesion.mount("https://", adaptador)
+    sesion.mount("http://", adaptador)
+    return sesion
+
+
+_SESION = _sesion_con_reintentos()
+
+# Cuántas veces reintentar cuando el WAF bloquea (403) o cuando la descarga
+# del ZIP falla por otro motivo (conexión cortada a mitad de los ~285MB,
+# etc.), y cuánto esperar entre intento e intento. El bloqueo del WAF es
+# intermitente (ver ingesta.py docstring) — probar de nuevo unos segundos
+# después a veces alcanza para que pase.
+REINTENTOS_DESCARGA = 2
+ESPERA_ENTRE_REINTENTOS_SEGUNDOS = 45
 
 # Código ISO 3166-2 de CABA (lo que usa realmente el SEPA en sucursales.csv).
 # Si lo agregás a config.py como CODIGO_PROVINCIA_CABA_ISO, se usa ese valor.
@@ -84,10 +117,11 @@ def _normalizar_nombre_dia(nombre: str) -> str:
 
 
 def _descargar_zip_dia(dia: str) -> Optional[bytes]:
-    """Descarga vía catálogo CKAN. Devuelve None si el WAF bloquea (403)."""
+    """Descarga vía catálogo CKAN. Devuelve None si el WAF bloquea (403) tras
+    agotar los reintentos, o si la descarga falla de forma persistente."""
     headers = {"User-Agent": config.USER_AGENT, "Accept": "application/json"}
     try:
-        r = requests.get(
+        r = _SESION.get(
             config.CKAN_API_SEPA,
             params={"id": config.CKAN_DATASET_SEPA},
             headers=headers,
@@ -107,23 +141,65 @@ def _descargar_zip_dia(dia: str) -> Optional[bytes]:
         logger.error(f"No se encontró el recurso '{dia}' en el catálogo CKAN")
         return None
 
-    try:
-        resp = requests.get(url_dia, headers=headers, timeout=300)
-        if resp.status_code == 403:
-            logger.warning(
-                f"El servidor bloqueó la descarga automática de '{dia}' (403 — WAF). "
-                f"Modo manual: descargá {url_dia} desde un navegador y guardalo "
-                f"en {MANUAL_DIR / (dia.lower() + '.zip')}"
-            )
+    # AGREGADO 2026-09-01: antes esto era un solo intento — cualquier 403 del
+    # WAF o corte de conexión a mitad de los ~285MB perdía el día entero,
+    # sin volver a probar. Como el bloqueo es intermitente (confirmado: el
+    # mismo día a veces pasa y a veces no), reintentar con una espera entre
+    # medio sube las chances reales de traer el dato ese mismo día.
+    intentos_totales = REINTENTOS_DESCARGA + 1
+    for intento in range(1, intentos_totales + 1):
+        try:
+            resp = _SESION.get(url_dia, headers=headers, timeout=300)
+            if resp.status_code == 403:
+                if intento < intentos_totales:
+                    logger.warning(
+                        f"WAF bloqueó '{dia}' (403) — intento {intento}/{intentos_totales}. "
+                        f"Reintento en {ESPERA_ENTRE_REINTENTOS_SEGUNDOS}s."
+                    )
+                    time.sleep(ESPERA_ENTRE_REINTENTOS_SEGUNDOS)
+                    continue
+                logger.warning(
+                    f"El servidor bloqueó la descarga automática de '{dia}' (403 — WAF) "
+                    f"tras {intentos_totales} intentos. Modo manual: descargá {url_dia} "
+                    f"desde un navegador y guardalo en {MANUAL_DIR / (dia.lower() + '.zip')}"
+                )
+                return None
+
+            resp.raise_for_status()
+
+            # Verificar integridad ANTES de cachear: una conexión cortada a
+            # mitad de la descarga puede devolver 200 con contenido parcial
+            # (no siempre dispara una excepción de requests). Cachear un ZIP
+            # corrupto sería peor que no cachear nada — la próxima corrida lo
+            # usaría como si fuera válido (ver _obtener_zip_dia, ventana de 7
+            # días) y fallaría después, más difícil de diagnosticar.
+            if not zipfile.is_zipfile(io.BytesIO(resp.content)):
+                if intento < intentos_totales:
+                    logger.warning(
+                        f"Descarga de '{dia}' llegó incompleta/corrupta "
+                        f"({len(resp.content)/1e6:.1f} MB) — intento {intento}/{intentos_totales}. "
+                        f"Reintento en {ESPERA_ENTRE_REINTENTOS_SEGUNDOS}s."
+                    )
+                    time.sleep(ESPERA_ENTRE_REINTENTOS_SEGUNDOS)
+                    continue
+                logger.error(f"Descarga de '{dia}' corrupta tras {intentos_totales} intentos — descartada.")
+                return None
+
+            # Cachear para no volver a bajar 285 MB en la próxima corrida del día.
+            (MANUAL_DIR / f"{dia.lower()}.zip").write_bytes(resp.content)
+            logger.info(f"Descarga OK ({len(resp.content)/1e6:.0f} MB) — cacheada en data/manual/")
+            return resp.content
+        except Exception as e:
+            if intento < intentos_totales:
+                logger.warning(
+                    f"Error al descargar '{dia}' (intento {intento}/{intentos_totales}): {e}. "
+                    f"Reintento en {ESPERA_ENTRE_REINTENTOS_SEGUNDOS}s."
+                )
+                time.sleep(ESPERA_ENTRE_REINTENTOS_SEGUNDOS)
+                continue
+            logger.error(f"Error al descargar '{dia}' tras {intentos_totales} intentos: {e}")
             return None
-        resp.raise_for_status()
-        # Cachear para no volver a bajar 285 MB en la próxima corrida del día.
-        (MANUAL_DIR / f"{dia.lower()}.zip").write_bytes(resp.content)
-        logger.info(f"Descarga OK ({len(resp.content)/1e6:.0f} MB) — cacheada en data/manual/")
-        return resp.content
-    except Exception as e:
-        logger.error(f"Error al descargar '{dia}': {e}")
-        return None
+    return None  # inalcanzable, pero explícito
 
 
 def _fecha_interna_zip(zip_bytes: bytes) -> Optional[date]:

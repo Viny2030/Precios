@@ -1,3 +1,33 @@
+"""
+main.py — Orquestador principal del pipeline
+Flujo (pensado para correr una vez al día, ej. via cron a las 4:00 AM):
+  1. Ingesta: descarga (o lee modo manual) el ZIP del SEPA del día y lo
+     filtra a CABA.
+  2. Transformación: normaliza precios por unidad y clasifica por COICOP.
+  3. Persistencia: guarda los registros crudos filtrados en la base.
+El cálculo del índice mensual (Fases I/II/III de econometria.py) se corre
+aparte, al cierre del mes — ver econometria.py y el ejemplo de uso en su
+docstring. Separarlo así evita recalcular el índice completo en cada
+corrida diaria.
+"""
+from __future__ import annotations
+import logging
+from datetime import date
+import pandas as pd
+import alertas
+import config
+import ingesta
+import transform
+from models import SessionLocal, MaestroProducto, RegistroPrecio, crear_tablas
+
+logger = logging.getLogger("main")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+
+def _dia_semana_hoy() -> str:
+    return config.DIAS_SEPA[date.today().weekday() % 7]
+
+
 def persistir_registros(df: pd.DataFrame) -> tuple[int, int]:
     """
     Vuelca el DataFrame procesado a la base: primero actualiza/crea las
@@ -19,7 +49,6 @@ def persistir_registros(df: pd.DataFrame) -> tuple[int, int]:
     try:
         eans_conocidos = {p.ean for p in db.query(MaestroProducto.ean).all()}
 
-        # 1) Productos nuevos: armar la lista completa y un solo insert en bloque.
         nuevos_productos = []
         vistos = set()
         for ean, grupo in df.groupby("ean"):
@@ -41,8 +70,6 @@ def persistir_registros(df: pd.DataFrame) -> tuple[int, int]:
             productos_nuevos = len(nuevos_productos)
         db.commit()
 
-        # 2) Precios: insertar en lotes de 20.000, con commit después de cada
-        # lote -- así nunca se acumula todo en una sola transacción gigante.
         validos = df.dropna(subset=["precio", "fecha"])
         buffer = []
         for fila in validos.itertuples(index=False):
@@ -69,3 +96,32 @@ def persistir_registros(df: pd.DataFrame) -> tuple[int, int]:
     finally:
         db.close()
     return productos_nuevos, precios_insertados
+
+
+def ejecutar_pipeline_diario(dia: str | None = None):
+    dia = dia or _dia_semana_hoy()
+    logger.info(f"=== Pipeline diario — {dia} — {date.today().isoformat()} ===")
+    crear_tablas()
+    logger.info("1/3 — Ingesta")
+    df_crudo = ingesta.procesar_dia_sepa(dia)
+    if df_crudo.empty:
+        logger.warning("Sin datos de CABA para hoy — nada para procesar. Ver ingesta.py "
+                        "si esto se repite varios días seguidos (probable bloqueo del WAF).")
+        alertas.alertar_ingesta_vacia(dia, motivo="procesar_dia_sepa() devolvió 0 filas")
+        return
+    logger.info("2/3 — Transformación")
+    df_norm = transform.normalizar_precios(df_crudo)
+    df_clasificado = transform.clasificar_coicop(df_norm)
+    df_alimentos = transform.filtrar_division_alimentos_bebidas(df_clasificado)
+    logger.info("3/3 — Persistencia")
+    nuevos, insertados = persistir_registros(df_alimentos)
+    logger.info(f"Listo — {nuevos} productos nuevos, {insertados} precios insertados "
+                f"(de {len(df_alimentos)} filas clasificadas en Alimentos/Bebidas)")
+    if insertados == 0:
+        alertas.alertar_ingesta_vacia(dia, motivo="0 precios insertados (llegaron filas pero ninguna con precio/fecha válidos)")
+    else:
+        alertas.marcar_ingesta_ok()
+
+
+if __name__ == "__main__":
+    ejecutar_pipeline_diario()

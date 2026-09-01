@@ -123,3 +123,13 @@ COBERTURA_MINIMA = 0.5
 # User-Agent honesto para las descargas — identifica el proyecto, no intenta
 # hacerse pasar por un navegador para evadir controles anti-bot.
 USER_AGENT = "AnalizadorPreciosCABA/1.0 (+proyecto de monitoreo de precios bajo Ley 27.275)"
+
+# AGREGADO 2026-09-01: proxy opcional para las descargas del SEPA. El WAF de
+# datos.produccion.gob.ar bloquea por reputación de IP de datacenter/nube —
+# confirmado que bloquea tanto un runner de GitHub Actions como un cron de
+# Railway, dos IPs de nube distintas — así que corre desde donde corra el
+# código, hace falta salir por una IP residencial para esa descarga puntual.
+# Sin este valor seteado, ingesta.py se comporta exactamente igual que
+# antes (conexión directa, sin proxy). Formato esperado (típico de
+# proveedores de proxy residencial): "http://usuario:password@host:puerto"
+PROXY_URL = os.environ.get("PROXY_URL") or None

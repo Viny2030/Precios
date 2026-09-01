@@ -61,6 +61,11 @@ MANUAL_DIR.mkdir(parents=True, exist_ok=True)
 # transitorios. El 403 del WAF NO entra en esta lista a propósito: no tiene
 # sentido reintentarlo en milisegundos, se maneja aparte con su propio
 # backoff más largo en _descargar_zip_dia().
+def _enmascarar_credenciales_proxy(url: str) -> str:
+    """Para loguear la URL del proxy sin exponer la contraseña."""
+    return re.sub(r"://([^:/@]+):[^@]+@", r"://\1:***@", url)
+
+
 def _sesion_con_reintentos() -> requests.Session:
     sesion = requests.Session()
     reintentos = Retry(
@@ -72,6 +77,18 @@ def _sesion_con_reintentos() -> requests.Session:
     adaptador = HTTPAdapter(max_retries=reintentos)
     sesion.mount("https://", adaptador)
     sesion.mount("http://", adaptador)
+
+    # AGREGADO 2026-09-01: si config.PROXY_URL está seteada (típicamente un
+    # proxy residencial, ver config.py), TODA la sesión sale por ahí --
+    # tanto la consulta al catálogo CKAN como la descarga del ZIP. Sin la
+    # variable seteada, esto no cambia nada (sesion.proxies queda vacío,
+    # conexión directa como siempre).
+    if config.PROXY_URL:
+        sesion.proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL}
+        logger.info(f"Descargas del SEPA saliendo por proxy: {_enmascarar_credenciales_proxy(config.PROXY_URL)}")
+    else:
+        logger.info("Sin PROXY_URL configurada — descargas del SEPA por conexión directa.")
+
     return sesion
 
 

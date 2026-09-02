@@ -12,7 +12,8 @@ corrida diaria.
 """
 from __future__ import annotations
 import logging
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 import pandas as pd
 import alertas
 import config
@@ -24,8 +25,20 @@ logger = logging.getLogger("main")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 
+def _fecha_hoy_ar() -> date:
+    # FIX 2026-09-02: antes se usaba date.today() (fecha del servidor, en UTC).
+    # Como Argentina está UTC-3, cerca del cambio de día UTC el servidor ya
+    # "cree" que es el día siguiente cuando en Argentina todavía no llegó
+    # la medianoche -- esto hacía que el cron pidiera el recurso SEPA
+    # equivocado justo en el peor momento (cuando ese recurso recién se
+    # estaba por generar). Se fija explícitamente la fecha de Argentina,
+    # sin importar en qué huso horario corra el servidor ni a qué hora
+    # dispare el cron.
+    return datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).date()
+
+
 def _dia_semana_hoy() -> str:
-    return config.DIAS_SEPA[date.today().weekday() % 7]
+    return config.DIAS_SEPA[_fecha_hoy_ar().weekday() % 7]
 
 
 def persistir_registros(df: pd.DataFrame) -> tuple[int, int]:
@@ -100,7 +113,7 @@ def persistir_registros(df: pd.DataFrame) -> tuple[int, int]:
 
 def ejecutar_pipeline_diario(dia: str | None = None):
     dia = dia or _dia_semana_hoy()
-    logger.info(f"=== Pipeline diario — {dia} — {date.today().isoformat()} ===")
+    logger.info(f"=== Pipeline diario — {dia} — {_fecha_hoy_ar().isoformat()} ===")
     crear_tablas()
     logger.info("1/3 — Ingesta")
     df_crudo = ingesta.procesar_dia_sepa(dia)

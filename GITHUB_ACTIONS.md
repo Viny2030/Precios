@@ -1,5 +1,18 @@
 # Automatización vía GitHub Actions — Ingesta diaria SEPA
 
+> **⚠️ ESTADO 2026-09: el workflow "Ingesta diaria SEPA" de este documento
+> está DESHABILITADO** (toggle de GitHub Actions, el archivo
+> `.github/workflows/ingesta_diaria.yml` sigue en el repo tal cual). La
+> ingesta diaria la hace ahora un **cron job nativo del servicio
+> `ingesta_diaria` en Railway** (`python main.py`, con `PROXY_URL` seteada
+> para esquivar el WAF de `datos.produccion.gob.ar`), sin depender de que
+> ninguna PC esté prendida. Ver [`DEPLOY_RAILWAY.md`](DEPLOY_RAILWAY.md)
+> para la configuración actual y el plan para migrar también los otros 3
+> workflows (`calcular_indice_mensual.yml`, `actualizar_series_oficiales.yml`,
+> `recalcular_sintetico.yml`) — esos 3 siguen activos en GitHub Actions hoy.
+> El resto de este documento describe el enfoque viejo (self-hosted
+> runner) — se deja como referencia por si hay que volver atrás.
+
 Reemplaza al Programador de tareas de Windows (`automatizacion.md`) por un
 workflow de GitHub Actions: corre en la nube, no depende de que tu PC esté
 prendido, y deja el resultado (`data/indice_caba.sqlite`,

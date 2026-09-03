@@ -1,7 +1,10 @@
 # Estado de pendientes (julio 2026)
 
-Actualizado 2026-08-01 — decisión de metodología sobre el período base tras
-la primera corrida real de `calcular_indice_mensual.py 2026-07`.
+Actualizado 2026-09-03 — confirmado el deploy en Railway (Postgres + web +
+cron de ingesta diaria) y deshabilitada la ingesta diaria por GitHub Actions
+por redundante; ver secciones 5-7. Entrada original 2026-08-01: decisión de
+metodología sobre el período base tras la primera corrida real de
+`calcular_indice_mensual.py 2026-07`.
 
 ## -1. `PERIODO_BASE` redefinido a julio 2026 (primer mes real)
 
@@ -115,14 +118,49 @@ crecimiento (~170MB/semana reportado) se mantiene, evaluar migrar
 `DATABASE_URL` a Postgres (ya soportado, es solo variable de entorno) o
 podar historial de LFS.
 
-## 5. Deploy en Railway — todavía no probado
+## 5. Deploy en Railway — confirmado funcionando (actualizado 2026-09-03)
 
-**Estado: pendiente, ahora más importante por el bug del punto 0.**
+**Estado: hecho.** Deploy confirmado en el proyecto `zonal-harmony`,
+environment `production`: servicio `Postgres` (con volumen), servicio web
+`Precios` (API + dashboard, auto-deploy desde `main`) y servicio cron
+`ingesta_diaria` (`python main.py` disparado por Cron Schedule de Railway,
+con `PROXY_URL` seteada para esquivar el WAF del SEPA). Los tres están
+online y la última corrida de `ingesta_diaria` fue exitosa. Detalle completo
+de la configuración (no versionada como código, solo en el dashboard de
+Railway) en [`DEPLOY_RAILWAY.md`](DEPLOY_RAILWAY.md).
 
-Falta hacer el deploy en sí y confirmar que la API levante con datos
-reales (no una base vacía). Con el fix de `config.DATA_DIR` aplicado, el
-`nixpacks.toml` (que instala `git-lfs` y corre `git lfs pull` antes de
-`pip install`) debería dejar `data/indice_caba.sqlite` real en
-`<repo>/data/`, que es donde el `config.py` corregido ahora sí busca la
-base. Antes de este fix, un deploy fresco habría arrancado con la base
-vacía sin ningún error visible.
+Como consecuencia, `.github/workflows/ingesta_diaria.yml` se deshabilitó
+(sigue en el repo, solo apagado desde la pestaña Actions) — ver la nota al
+principio de `GITHUB_ACTIONS.md`.
+
+## 6. Migrar el resto de los workflows a cron de Railway
+
+**Estado: pendiente, no bloqueante.** Hoy solo `ingesta_diaria` corre como
+cron de Railway. Los otros 3 workflows de GitHub Actions siguen activos ahí:
+
+- `calcular_indice_mensual.yml` — corre en runner **self-hosted** (la PC
+  del proyecto tiene que estar prendida el día 2 de cada mes), aunque el
+  script no descarga nada del SEPA — no hay motivo técnico para que
+  dependa de esa PC. Candidato para migrar primero.
+- `actualizar_series_oficiales.yml` — corre en `ubuntu-latest` sin
+  problema (la fuente que usa no tiene el WAF del SEPA). Migrar es más
+  por consolidar todo en un solo dashboard que por necesidad.
+- `recalcular_sintetico.yml` — solo manual (`workflow_dispatch`), se usa
+  pocas veces. Recomendación: dejarlo tal cual en GitHub Actions, no vale
+  la pena migrarlo a un servicio de Railway.
+
+Plan paso a paso (nuevo servicio Railway por workflow, mismo repo, cron
+propio) en la sección 3 de [`DEPLOY_RAILWAY.md`](DEPLOY_RAILWAY.md).
+
+## 7. Alertas de ingesta vacía — conexión eliminada (resuelto 2026-09-03)
+
+**Estado: hecho (se sacó, no se reemplazó).** `main.py` ya no llama a
+`alertas.py` (era un mecanismo pensado para la rutina diaria de Windows,
+que ya no existe — la reemplazó el cron de `ingesta_diaria` en Railway).
+`alertas.py` queda huérfano en el repo, sin importar desde ningún script.
+La única señal de una ingesta vacía hoy es el `logger.warning(...)` de
+`main.py` en el log de esa corrida en el dashboard de Railway — no hay
+aviso activo. Si en algún momento se quiere una alerta de verdad (webhook a
+Slack/Discord, o que el pipeline salga con código de error para que Railway
+marque la corrida en rojo), las opciones evaluadas quedan documentadas en
+la sección 4 de [`DEPLOY_RAILWAY.md`](DEPLOY_RAILWAY.md).

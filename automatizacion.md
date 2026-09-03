@@ -1,4 +1,14 @@
-# Automatización diaria — Ingesta SEPA
+# Automatización diaria — Ingesta SEPA (histórico — enfoque en desuso)
+
+> **⚠️ ESTADO 2026-09-03: este documento describe el enfoque viejo (Windows,
+> Programador de tareas), que ya no está en uso.** La ingesta diaria corre
+> hoy como cron job del servicio `ingesta_diaria` en Railway — ver
+> [`DEPLOY_RAILWAY.md`](DEPLOY_RAILWAY.md). En particular, la sección
+> "Alerta cuando un día viene vacío" de más abajo ya NO aplica: `main.py`
+> dejó de llamar a `alertas.py` (esa conexión se sacó, no tiene sentido en
+> un cron efímero de Railway sin escritorio ni filesystem persistente — ver
+> sección 4 de `DEPLOY_RAILWAY.md`). Se deja este documento como referencia
+> por si en algún momento se vuelve a correr el pipeline localmente a mano.
 
 Este documento explica cómo dejar corriendo la ingesta diaria del SEPA
 automáticamente en Windows.

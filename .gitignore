@@ -36,6 +36,12 @@ data/*
 # Los dumps crudos del SEPA (cientos de MB por día) NUNCA se versionan.
 data/manual/
 
+# railway.json SÍ se versiona (config del servicio web "Precios" en
+# Railway) — la regla "*.json" de arriba es para JSONs de datos/caché, no
+# para este archivo. Agregado 2026-09-03: antes quedaba ignorado sin
+# querer y nunca había llegado a GitHub.
+!railway.json
+
 outputs/
 
 # Configuraciones ocultas y credenciales

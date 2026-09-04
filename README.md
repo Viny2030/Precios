@@ -28,6 +28,7 @@ De acuerdo con la **Ley N° 27.275 de Derecho de Acceso a la Información Públi
 | `api.py` | API REST + dashboard (`/dashboard`, `rubros.html`) | Siempre activo (servicio web `Precios` en Railway) |
 | `barrer_semana.py` | Backfill: ingesta los 7 días disponibles del catálogo CKAN de una sola pasada | Manual, para setup inicial o recuperar días antes de que CKAN los pise |
 | `migrar_a_postgres.py <url>` | Migra los datos de `data/indice_caba.sqlite` a Postgres | Manual, una vez, al migrar de SQLite a Postgres |
+| `verificar_ingesta.py` | Chequeo rápido OK/ALERTA: compara la fecha más reciente con datos en la base contra hoy | Manual, para controlar la ingesta diaria desde PyCharm sin entrar al dashboard de Railway — ver `DEPLOY_RAILWAY.md` §3.5 |
 
 ## 🛠️ Instalación y uso local
 

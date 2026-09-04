@@ -98,9 +98,15 @@ En el dashboard de Railway, servicio `ingesta_diaria`:
 - **Source**: GitHub → `Viny2030/Precios` → rama `main`.
 - **Settings → Deploy → Custom Start Command**: `python main.py`
   (pisa el `Procfile`, que es para el servicio web).
-- **Settings → Cron Schedule**: expresión cron en UTC, equivalente al
-  horario que usaba `pipeline_diario.bat`/`ingesta_diaria.yml` (04:00 ART =
-  07:00 UTC → `0 7 * * *`). Railway corre el start command una vez por
+- **Settings → Cron Schedule**: expresión cron en UTC. **Corrección
+  2026-09-04:** este documento decía `0 7 * * *` (07:00 UTC / 04:00 ART,
+  el horario que usaba `pipeline_diario.bat`/`ingesta_diaria.yml`), pero
+  `railway status` muestra que el cron real configurado en el dashboard es
+  `0 0 * * *` (medianoche UTC = 21:00 ART del día anterior) — quedó
+  desactualizado respecto al dashboard. No rompe nada (`main.py` calcula
+  la fecha de Argentina explícitamente, ver `_fecha_hoy_ar()`), pero si se
+  quiere volver al horario de madrugada hay que cambiarlo a mano en
+  Settings → Cron Schedule. Railway corre el start command una vez por
   disparo y apaga el contenedor al terminar — no queda un proceso vivo
   entre corridas.
 - **Variables** (Settings → Variables), heredables o propias del servicio:
@@ -195,6 +201,35 @@ Dos opciones si se quiere sacarlo igual de GitHub Actions:
 - Revisar `ESTADO_PENDIENTES.md` — el punto sobre "automatizaciones
   confirmadas funcionando" tiene que reflejar dónde corre cada una
   (Railway vs. GitHub Actions), no asumir que las 4 siguen en GitHub.
+
+## 3.5 Control diario sin entrar al dashboard — `railway logs` no funciona con Cron Jobs
+
+**Hallazgo 2026-09-04:** se instaló el Railway CLI (v5.49.1) y se lo
+vinculó al proyecto (`railway link` → `zonal-harmony` / `production` /
+servicio `ingesta_diaria`) para poder revisar el log de la ingesta diaria
+desde la terminal sin abrir el navegador. `railway logs` no devuelve nada
+para este servicio con ninguna combinación de flags probada: por defecto,
+con `-n`/`--lines`, con `--since 24h`, con `--latest`, ni pasando el
+deployment ID directo (`railway logs <id>`). Todas devuelven vacío (solo
+el warning de "Config as Code deprecated"). El dashboard web sí muestra
+los logs sin problema — parece una limitación real de Railway con los
+Cron Jobs como recurso de primera clase (en `railway status` aparecen en
+su propia sección "Cron jobs", separados de "Services"), no un error de
+configuración de este proyecto.
+
+Mientras Railway no lo resuelva, el control diario queda así:
+
+- **Log completo / debug puntual:** dashboard web de Railway (servicio
+  `ingesta_diaria` → pestaña Deployments).
+- **Chequeo rápido OK/ALERTA sin abrir el navegador:** `verificar_ingesta.py`
+  (nuevo, en la raíz del repo) — se conecta directo a Postgres y compara
+  la fecha más reciente con datos contra hoy. Necesita `DATABASE_URL`
+  seteada en tu PC con la cadena **pública** de Postgres (Railway →
+  servicio Postgres → Variables). Uso: `python verificar_ingesta.py`.
+
+El CLI quedó igual instalado y vinculado (`railway link` ya hecho), así
+que si Railway arregla esto en una versión futura, `railway logs -n 100`
+debería empezar a andar sin volver a configurar nada.
 
 ## 4. Alertas de ingesta vacía — se sacó la conexión (2026-09-03)
 

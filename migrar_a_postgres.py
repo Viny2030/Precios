@@ -22,10 +22,21 @@ TABLAS_EN_ORDEN = [
 
 
 def main(url_destino: str) -> None:
-    origen = create_engine(config.DATABASE_URL)
+    # FIX 2026-09-01: antes el origen era config.DATABASE_URL. Ese valor lee
+    # primero la variable de entorno DATABASE_URL -- si quien corre este
+    # script ya la tiene seteada en su sesión apuntando a Postgres (pasó en
+    # la práctica: quedó exportada de una prueba anterior), el "origen" deja
+    # de ser el sqlite local y termina siendo la MISMA base que el destino,
+    # convirtiendo la migración en una copia de Postgres sobre sí mismo (y
+    # explotando con UniqueViolation en la primera tabla con datos). El
+    # origen de ESTE script es siempre el sqlite local, sin importar qué
+    # tenga seteado el entorno -- se arma igual que el fallback de
+    # config.py, pero ignorando la variable de entorno a propósito.
+    url_origen = f"sqlite:///{config.DB_PATH}"
+    origen = create_engine(url_origen)
     destino = create_engine(url_destino)
 
-    print(f"Origen (sqlite):  {config.DATABASE_URL}")
+    print(f"Origen (sqlite):  {url_origen}")
     print(f"Destino (postgres): {url_destino}")
     print()
 
@@ -58,6 +69,22 @@ def main(url_destino: str) -> None:
                       f"coicop_subclase=NULL - revisar si hay que sumar esas subclases "
                       f"a la canasta (ENGHo) o reclasificar esos EANs.")
                 df.loc[huerfanos.index, "coicop_subclase"] = None
+
+        # FIX 2026-09-01: si el destino ya tiene filas en esta tabla (ej.
+        # ponderaciones_coicop, que se ve que ya quedó sembrada por otra vía
+        # -- probablemente al levantar la app en Railway), un
+        # to_sql(if_exists="append") a ciegas choca contra la primary key y
+        # tira toda la migración abajo, incluidas las tablas que vienen
+        # después en la lista y sí estaban vacías. Mejor: si ya hay datos,
+        # saltear esa tabla puntual con aviso en vez de reventar todo.
+        with destino.connect() as conn:
+            n_destino_previo = conn.exec_driver_sql(f"SELECT COUNT(*) FROM {tabla}").scalar()
+        if n_destino_previo > 0:
+            print(f"  {tabla}: el destino ya tiene {n_destino_previo} fila(s) -- SALTEADA para no "
+                  f"duplicar/chocar con datos existentes (origen tenía {n_origen}). Si esta tabla "
+                  f"necesita re-migrarse desde cero, vaciala en Postgres primero y volvé a correr.")
+            total_destino += n_destino_previo
+            continue
 
         df.to_sql(tabla, destino, if_exists="append", index=False)
 

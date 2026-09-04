@@ -5,10 +5,18 @@ sobre los datos ya persistidos y guarda el resultado en indice_calculado.
 Uso:
     python calcular_indice_mensual.py 2026-02   # calcula febrero 2026
                                                   # (compara contra config.PERIODO_BASE)
+    python calcular_indice_mensual.py            # sin argumento: calcula el
+                                                  # mes calendario anterior a
+                                                  # hoy (UTC), sin importar
+                                                  # qué día del mes se llame.
+                                                  # Pensado para un cron que
+                                                  # solo puede fijar un start
+                                                  # command fijo (ej. Railway
+                                                  # Cron) — ver _mes_anterior().
 """
 import logging
 import sys
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -122,8 +130,30 @@ def _upsert_indice(db, periodo, nivel, coicop_subclase, valor, n_variedades):
         ))
 
 
+def _mes_anterior(hoy: date | None = None) -> str:
+    """Mes calendario anterior a `hoy` (UTC), formato 'YYYY-MM', sin importar
+    qué día del mes se llame esta función.
+
+    AGREGADO 2026-09-01: esta cuenta ya se había escrito una vez -- en
+    PowerShell, adentro de .github/workflows/calcular_indice_mensual.yml --
+    y tuvo un bug real (usaba "ayer", que solo da el mes anterior si corre
+    el día 1; el día 2 -- cuando de hecho dispara el cron -- daba el mes en
+    curso sin cerrar). Centralizarla acá, en Python, con tests, evita
+    reescribir/reintroducir el mismo bug en cada plataforma nueva que
+    dispare este script (ej. un cron de Railway, que solo puede fijar un
+    start command fijo tipo `python calcular_indice_mensual.py`, sin lugar
+    para lógica de fecha propia)."""
+    hoy = hoy or datetime.now(timezone.utc).date()
+    primer_dia_mes_actual = hoy.replace(day=1)
+    ultimo_dia_mes_anterior = primer_dia_mes_actual - timedelta(days=1)
+    return ultimo_dia_mes_anterior.strftime("%Y-%m")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Uso: python calcular_indice_mensual.py YYYY-MM")
-        sys.exit(1)
-    calcular_y_guardar(sys.argv[1])
+    if len(sys.argv) >= 2:
+        periodo = sys.argv[1]
+        logger.info(f"Periodo forzado por argumento: {periodo}")
+    else:
+        periodo = _mes_anterior()
+        logger.info(f"Sin argumento — calculando el mes calendario anterior a hoy: {periodo}")
+    calcular_y_guardar(periodo)

@@ -24,7 +24,7 @@ Tres servicios en el mismo proyecto/environment:
 |---|---|---|---|---|
 | `Postgres` | Base de datos (plugin de Railway) | — | Postgres administrado, con volumen persistente (`postgres-volume`) | Online, siempre arriba |
 | `Precios` | Web service | GitHub `Viny2030/Precios`, rama `main`, auto-deploy en cada push | `uvicorn api:app --host 0.0.0.0 --port $PORT` (ver `Procfile` y `railway.json`) — sirve la API REST y el dashboard (`/dashboard`) | Online, siempre arriba |
-| `ingesta_diaria` | Cron job | Mismo repo `Viny2030/Precios`, rama `main` | `python main.py` (pipeline diario: descarga SEPA del día, filtra CABA, clasifica COICOP, persiste) | Cron activo — "Last run succeeded", próxima corrida en el horario configurado |
+| `ingesta_diaria` | Cron job | Mismo repo `Viny2030/Precios`, rama `main` | `python main.py` (pipeline diario: descarga SEPA del día, filtra CABA, clasifica COICOP, persiste — y, día 2 o día 16, también cierra el índice mensual o refresca series oficiales, ver sección 3) | Cron activo — "Last run succeeded", próxima corrida en el horario configurado |
 
 `Precios` e `ingesta_diaria` son **dos servicios Railway separados apuntando
 al mismo repo**, cada uno con su propio comando de arranque y sus propias
@@ -124,51 +124,50 @@ En el dashboard de Railway, servicio `ingesta_diaria`:
 ## 3. Cómo migrar el resto de los workflows a cron de Railway
 
 Los otros 3 workflows de `.github/workflows/` siguen corriendo hoy en
-GitHub Actions y **no están migrados todavía**. Esto es la propuesta para
-llevarlos al mismo esquema que `ingesta_diaria`, sumando un servicio nuevo
-por cada uno (mismo repo, distinto comando y cron):
+GitHub Actions. De los tres, `calcular_indice_mensual` y
+`actualizar_series_oficiales` **ya están migrados** (2026-09-04) — no como
+servicios Railway nuevos, sino integrados directo en `main.py`, el script
+que ya corre el servicio `ingesta_diaria`. `recalcular_sintetico` sigue sin
+migrar (ver 3.3, no hace falta).
 
-### 3.1 `calcular_indice_mensual` → nuevo servicio cron
+### 3.1 y 3.2 `calcular_indice_mensual` y `actualizar_series_oficiales` — migrados a `main.py` (2026-09-04)
 
-Hoy corre en un runner **self-hosted** (`calcular_indice_mensual.yml`), pero
-a diferencia de la ingesta, este script **no descarga nada del SEPA** — solo
-lee de la base y calcula (Fases I/II/III de `econometria.py`). No hay motivo
-técnico para que dependa de la PC del proyecto; quedó en self-hosted "para no
-mantener dos configuraciones de runner distintas" (comentario en el propio
-workflow), no por el WAF. Es un buen candidato para migrar primero.
+Se descartó la idea original de crear un servicio Railway nuevo por
+workflow (cada uno con su propio cron). En cambio, como `ingesta_diaria`
+**ya** corre todos los días (`python main.py`), se aprovechó ese mismo
+disparador: `main.py` ahora llama a `calcular_indice_mensual.py` cuando la
+fecha de Argentina es día 2, y a `actualizar_series_oficiales.py` cuando es
+día 16 (ver `_ejecutar_tareas_mensuales()` en `main.py`). El resto de los
+días esas dos ramas no hacen nada.
 
-- **Add → GitHub Repo** → mismo repo `Viny2030/Precios`, rama `main`.
-- **Custom Start Command**: `python calcular_indice_mensual.py` (sin
-  argumento de período → sería recalcular con el mes por defecto que use el
-  script; revisar si conviene envolverlo en un wrapper que calcule "mes
-  calendario anterior a hoy" igual que hace hoy el paso de PowerShell del
-  workflow, ya que `calcular_indice_mensual.py` solo, sin `sys.argv`,
-  probablemente no resuelve el período solo — conviene un pequeño script
-  Python de una línea, ej. `calcular_periodo_actual.py`, que calcule el mes
-  anterior y llame a la función, para no reimplementar esa lógica en shell).
-- **Cron Schedule**: día 2 de cada mes, 08:00 UTC → `0 8 2 * *` (igual al
-  actual).
-- **Variables**: `DATABASE_URL` (referencia a Postgres, igual que
-  `ingesta_diaria`). No necesita `PROXY_URL` (no descarga nada externo).
-- Una vez confirmado que corre bien un par de meses seguidos, deshabilitar
-  `calcular_indice_mensual.yml` en GitHub Actions (mismo mecanismo que se
-  usó para `ingesta_diaria.yml`: toggle "Disable workflow", no borrar el
-  archivo, así queda como referencia y se puede reactivar sin reescribir
-  nada).
+Por qué este enfoque en vez de servicios separados:
 
-### 3.2 `actualizar_series_oficiales` → nuevo servicio cron
+- Un solo servicio cron (`ingesta_diaria`) en vez de tres — menos superficie
+  para configurar y monitorear en el dashboard de Railway.
+- No cambia la frecuencia real de ninguna tarea: el chequeo de fecha adentro
+  de Python reemplaza uno por uno a los `cron:` de cada workflow (día 2,
+  08:00 UTC para el índice; día 16, 09:00 UTC para las series oficiales),
+  solo que ahora el "disparador de verdad" es el cron diario único de
+  Railway (`0 7 * * *`) y la fecha se filtra en código.
+- `calcular_indice_mensual.py` ya traía `_mes_anterior()`, escrita
+  justamente para no depender de un `sys.argv` ni de lógica de fecha en
+  shell — se reusa tal cual desde `main.py`.
+- Ninguna de las dos tareas necesita `PROXY_URL` ni ninguna variable nueva:
+  como corren dentro del mismo proceso/servicio que la ingesta diaria,
+  heredan las mismas variables (`DATABASE_URL`) que ya tiene configuradas
+  `ingesta_diaria`.
 
-Este ya corre en `ubuntu-latest` (nube) sin problema, porque
-`apis.datos.gob.ar/series` no tiene el WAF que bloquea al SEPA. Migrarlo es
-más por consolidar todo en un solo lugar (un dashboard, Railway, en vez de
-dos) que por necesidad técnica.
-
-- **Custom Start Command**: `python actualizar_series_oficiales.py`.
-- **Cron Schedule**: día 16 de cada mes, 09:00 UTC → `0 9 16 * *` (igual al
-  actual).
-- **Variables**: `DATABASE_URL`.
-- Mismo criterio: confirmar un par de corridas y después deshabilitar
-  `actualizar_series_oficiales.yml` en GitHub.
+**Pendiente para terminar la migración:** una vez que el cron de Railway
+dispare de verdad un día 2 y un día 16 (o se fuerce un *redeploy* manual del
+servicio `ingesta_diaria` en esas fechas) y se confirme en los logs que
+corrió bien, deshabilitar `calcular_indice_mensual.yml` y
+`actualizar_series_oficiales.yml` en GitHub Actions (mismo mecanismo que se
+usó para `ingesta_diaria.yml`: toggle "Disable workflow", no borrar el
+archivo). Hasta entonces, las dos vías van a correr en paralelo (Railway +
+GitHub Actions self-hosted/ubuntu) — no debería romper nada, porque ambos
+scripts son idempotentes (`calcular_y_guardar` hace upsert por período,
+`actualizar_todas_las_series` no pisa si no hay dato nuevo), pero es
+redundante y conviene no dejarlo así mucho tiempo.
 
 ### 3.3 `recalcular_sintetico` — dejarlo manual, no migrar a cron
 

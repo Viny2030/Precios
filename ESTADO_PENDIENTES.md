@@ -135,22 +135,30 @@ principio de `GITHUB_ACTIONS.md`.
 
 ## 6. Migrar el resto de los workflows a cron de Railway
 
-**Estado: pendiente, no bloqueante.** Hoy solo `ingesta_diaria` corre como
-cron de Railway. Los otros 3 workflows de GitHub Actions siguen activos ahí:
+**Estado: hecho para 2 de los 3 (2026-09-04), falta apagar los workflows
+viejos.** `calcular_indice_mensual` y `actualizar_series_oficiales` ya no
+necesitan un servicio Railway propio: se integraron directo en `main.py`
+(el mismo script que corre `ingesta_diaria` a diario), gateados por un
+chequeo de fecha (día 2 y día 16 respectivamente — ver
+`_ejecutar_tareas_mensuales()` en `main.py` y la sección 3 de
+[`DEPLOY_RAILWAY.md`](DEPLOY_RAILWAY.md) para el detalle y el motivo de
+este enfoque en vez de crear servicios nuevos).
 
-- `calcular_indice_mensual.yml` — corre en runner **self-hosted** (la PC
-  del proyecto tiene que estar prendida el día 2 de cada mes), aunque el
-  script no descarga nada del SEPA — no hay motivo técnico para que
-  dependa de esa PC. Candidato para migrar primero.
-- `actualizar_series_oficiales.yml` — corre en `ubuntu-latest` sin
-  problema (la fuente que usa no tiene el WAF del SEPA). Migrar es más
-  por consolidar todo en un solo dashboard que por necesidad.
+Los workflows de GitHub Actions correspondientes **siguen activos** por
+ahora — no se tocaron todavía:
+
+- `calcular_indice_mensual.yml` (runner self-hosted) — apagar una vez que
+  se confirme una corrida día 2 en Railway con el fix de arriba andando.
+- `actualizar_series_oficiales.yml` (`ubuntu-latest`) — apagar una vez que
+  se confirme una corrida día 16 en Railway.
 - `recalcular_sintetico.yml` — solo manual (`workflow_dispatch`), se usa
   pocas veces. Recomendación: dejarlo tal cual en GitHub Actions, no vale
-  la pena migrarlo a un servicio de Railway.
+  la pena migrarlo a un servicio de Railway (ver sección 3.3 de
+  `DEPLOY_RAILWAY.md`).
 
-Plan paso a paso (nuevo servicio Railway por workflow, mismo repo, cron
-propio) en la sección 3 de [`DEPLOY_RAILWAY.md`](DEPLOY_RAILWAY.md).
+Mientras no se apaguen los dos workflows migrados, las tareas van a correr
+por duplicado (Railway + GitHub Actions) los días 2 y 16 — no debería
+romper nada porque ambos scripts son idempotentes, pero es redundante.
 
 ## 7. Alertas de ingesta vacía — conexión eliminada (resuelto 2026-09-03)
 
